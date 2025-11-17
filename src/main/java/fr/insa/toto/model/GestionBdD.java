@@ -195,6 +195,7 @@ public class GestionBdD {
     /**
      * Importe un fichier CSV dans une table (skip ID auto, gère header, nulls, délimiteur ;).
      * Supporte "joueur" (SURNOM;CATÉGORIE;TAILLECM), "matchs" (RONDE), "equipe" (NUM;SCORE;IDMATCH), "composition" (IDEQUIPE;IDJOUEUR).
+     * Utilise ON DUPLICATE KEY UPDATE pour upsert (update si duplicate, ex. surnom unique).
      * @param con connexion BDD
      * @param tableName nom de la table (ex. "joueur")
      * @param csvFile nom fichier CSV (ex. "joueur.csv")
@@ -206,6 +207,8 @@ public class GestionBdD {
             String line;
             boolean headerSkipped = false;
             int importedCount = 0;
+            int updatedCount = 0;
+            int ignoredCount = 0;
             while ((line = reader.readLine()) != null) {
                 if (!headerSkipped) {
                     headerSkipped = true;
@@ -220,13 +223,14 @@ public class GestionBdD {
                     values[i] = values[i].replace("\"", "").trim();
                 }
 
-                // Cas par table (skip ID si présent, assume export SELECT *)
+                // Cas par table (skip index 0 = ID, utilise ON DUPLICATE KEY UPDATE pour upsert)
                 if ("joueur".equals(tableName) && values.length >= 4) {
-                    String surnom = values[1];  // Skip ID (index 0)
-                    String categorie = "NULL".equals(values[2]) ? null : values[2];
-                    Integer tailleCm = "NULL".equals(values[3]) ? null : Integer.parseInt(values[3]);
+                    String surnom = values[1];  // Skip ID
+                    String categorie = "NULL".equals(values[2]) || values[2].isEmpty() ? null : values[2];
+                    Integer tailleCm = "NULL".equals(values[3]) || values[3].isEmpty() ? null : Integer.parseInt(values[3]);
                     try (PreparedStatement pst = con.prepareStatement(
-                            "INSERT INTO joueur (SURNOM, CATEGORIE, TAILLECM) VALUES (?, ?, ?)")) {
+                            "INSERT INTO joueur (SURNOM, CATEGORIE, TAILLECM) VALUES (?, ?, ?) " +
+                            "ON DUPLICATE KEY UPDATE CATEGORIE = VALUES(CATEGORIE), TAILLECM = VALUES(TAILLECM)")) {
                         pst.setString(1, surnom);
                         pst.setString(2, categorie);
                         if (tailleCm != null) {
@@ -234,18 +238,30 @@ public class GestionBdD {
                         } else {
                             pst.setNull(3, Types.INTEGER);
                         }
-                        pst.executeUpdate();
-                        importedCount++;
+                        int rows = pst.executeUpdate();
+                        if (rows > 0) {
+                            importedCount++;  // Insert
+                        } else if (rows == 2) {
+                            updatedCount++;  // Update (ON DUPLICATE)
+                        } else {
+                            ignoredCount++;
+                        }
                     } catch (NumberFormatException ex) {
                         System.out.println("Ligne ignorée (taille invalide) : " + line);
+                        ignoredCount++;
                     }
                 } else if ("matchs".equals(tableName) && values.length >= 2) {
-                    Integer ronde = "NULL".equals(values[1]) ? null : Integer.parseInt(values[1]);  // Skip ID
+                    Integer ronde = "NULL".equals(values[1]) || values[1].isEmpty() ? null : Integer.parseInt(values[1]);
                     if (ronde != null) {
-                        try (PreparedStatement pst = con.prepareStatement("INSERT INTO matchs (RONDE) VALUES (?)")) {
+                        try (PreparedStatement pst = con.prepareStatement(
+                                "INSERT INTO matchs (RONDE) VALUES (?) ON DUPLICATE KEY UPDATE RONDE = VALUES(RONDE)")) {
                             pst.setInt(1, ronde);
-                            pst.executeUpdate();
-                            importedCount++;
+                            int rows = pst.executeUpdate();
+                            if (rows > 0) importedCount++;
+                            else ignoredCount++;
+                        } catch (NumberFormatException ex) {
+                            System.out.println("Ligne ignorée (ronde invalide) : " + line);
+                            ignoredCount++;
                         }
                     }
                 } else if ("equipe".equals(tableName) && values.length >= 5) {
@@ -253,33 +269,38 @@ public class GestionBdD {
                     Integer score = Integer.parseInt(values[2]);
                     Integer idMatch = Integer.parseInt(values[3]);
                     try (PreparedStatement pst = con.prepareStatement(
-                            "INSERT INTO equipe (NUM, SCORE, IDMATCH) VALUES (?, ?, ?)")) {
+                            "INSERT INTO equipe (NUM, SCORE, IDMATCH) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE SCORE = VALUES(SCORE), IDMATCH = VALUES(IDMATCH)")) {
                         pst.setInt(1, num);
                         pst.setInt(2, score);
                         pst.setInt(3, idMatch);
-                        pst.executeUpdate();
-                        importedCount++;
+                        int rows = pst.executeUpdate();
+                        if (rows > 0) importedCount++;
+                        else ignoredCount++;
                     } catch (NumberFormatException ex) {
                         System.out.println("Ligne ignorée (équipe invalide) : " + line);
+                        ignoredCount++;
                     }
                 } else if ("composition".equals(tableName) && values.length >= 3) {
                     Integer idEquipe = Integer.parseInt(values[1]);  // Skip ID si présent
                     Integer idJoueur = Integer.parseInt(values[2]);
                     try (PreparedStatement pst = con.prepareStatement(
-                            "INSERT INTO composition (IDEQUIPE, IDJOUEUR) VALUES (?, ?)")) {
+                            "INSERT INTO composition (IDEQUIPE, IDJOUEUR) VALUES (?, ?) ON DUPLICATE KEY UPDATE IDJOUEUR = VALUES(IDJOUEUR)")) {
                         pst.setInt(1, idEquipe);
                         pst.setInt(2, idJoueur);
-                        pst.executeUpdate();
-                        importedCount++;
+                        int rows = pst.executeUpdate();
+                        if (rows > 0) importedCount++;
+                        else ignoredCount++;  // Duplicate key
                     } catch (NumberFormatException ex) {
                         System.out.println("Ligne ignorée (composition invalide) : " + line);
+                        ignoredCount++;
                     }
                 } else {
                     System.out.println("Table " + tableName + " non supportée ou ligne invalide : " + line);
+                    ignoredCount++;
                 }
             }
             con.commit();
-            System.out.println("Importé " + csvFile + " dans " + tableName + " (" + importedCount + " lignes ajoutées).");
+            System.out.println("Importé " + csvFile + " dans " + tableName + " (" + importedCount + " ajoutées, " + updatedCount + " mises à jour, " + ignoredCount + " ignorées).");
         } catch (IOException ex) {
             con.rollback();
             throw new SQLException("Erreur lecture fichier CSV : " + ex.getMessage(), ex);
