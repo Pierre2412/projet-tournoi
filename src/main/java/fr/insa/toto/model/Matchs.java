@@ -23,6 +23,9 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Classe miroir pour la table matchs.
@@ -41,6 +44,21 @@ public class Matchs extends ClasseMiroir {
         super(id);
         this.ronde = ronde;
     }
+    
+    public static List<Matchs> tousLesMatchs(Connection con) throws SQLException {
+        List<Matchs> res = new ArrayList<>();
+        try (PreparedStatement pst = con.prepareStatement("SELECT ID, RONDE FROM matchs")) {
+            try (ResultSet rs = pst.executeQuery()) {
+                while (rs.next()) {
+                    res.add(new Matchs(
+                            rs.getInt("ID"),
+                            rs.getInt("RONDE")
+                    ));
+                }
+            }
+        }
+        return res;
+    }
 
     @Override
     public Statement saveSansId(Connection con) throws SQLException {
@@ -50,6 +68,11 @@ public class Matchs extends ClasseMiroir {
         insert.setInt(1, this.getRonde());
         insert.executeUpdate();
         return insert;
+    }
+    
+    @Override
+    public String toString() {
+        return "Match " + getId() + " (Ronde " + ronde + ")";
     }
 
     // Getters/Setters

@@ -26,6 +26,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
+import fr.insa.toto.model.Joueur;
 
 /**
  * Classe miroir pour la table equipe.
@@ -161,6 +162,30 @@ public int nbCategoriesDistinctes(Connection con) throws SQLException {
         } finally {
             con.setAutoCommit(true);
         }
+    }
+    
+    public List<Joueur> getJoueurs(Connection con) throws SQLException {
+        if (this.getId() == -1) throw new ClasseMiroir.EntiteNonSauvegardee();
+        List<Joueur> res = new ArrayList<>();
+        // Jointure entre composition et joueur
+        String sql = "SELECT j.ID, j.SURNOM, j.CATEGORIE, j.TAILLECM " +
+                     "FROM joueur j " +
+                     "JOIN composition c ON j.ID = c.IDJOUEUR " +
+                     "WHERE c.IDEQUIPE = ?";
+        try (PreparedStatement pst = con.prepareStatement(sql)) {
+            pst.setInt(1, this.getId());
+            try (ResultSet rs = pst.executeQuery()) {
+                while (rs.next()) {
+                    res.add(new Joueur(
+                            rs.getInt("ID"),
+                            rs.getString("SURNOM"),
+                            rs.getString("CATEGORIE"),
+                            rs.getObject("TAILLECM") != null ? rs.getInt("TAILLECM") : null
+                    ));
+                }
+            }
+        }
+        return res;
     }
 
     // Getters/Setters
