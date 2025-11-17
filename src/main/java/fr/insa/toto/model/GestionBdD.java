@@ -26,8 +26,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.stream.Collectors;
+import java.sql.Types;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.io.*;
 
 /**
@@ -174,20 +175,119 @@ public class GestionBdD {
             // Crée fichier CSV
             String fileName = tableName + ".csv";
             try (PrintWriter writer = new PrintWriter(new File(fileName))) {
-                // Header : Noms colonnes
-                writer.println(String.join(",", data.getColumnNames()));
+                // Header : Noms colonnes, séparés par ;
+                writer.println(String.join(";", data.getColumnNames()));
                 
-                // Data : Chaque ligne
+                // Data : Chaque ligne, séparée par ; et quotée pour sécurité
                 for (List<Object> row : data.getValues()) {
                     String line = row.stream()
-                        .map(obj -> obj == null ? "NULL" : obj.toString())
-                        .collect(Collectors.joining(","));
+                        .map(obj -> "\"" + (obj == null ? "NULL" : obj.toString()) + "\"")
+                        .collect(Collectors.joining(";"));
                     writer.println(line);
                 }
             } catch (IOException ex) {
                 throw new SQLException("Erreur fichier CSV : " + ex.getMessage(), ex);
             }
             System.out.println("Exporté : " + fileName + " (" + data.getValues().size() + " lignes).");
+        }
+    }
+
+    /**
+     * Importe un fichier CSV dans une table (skip ID auto, gère header, nulls, délimiteur ;).
+     * Supporte "joueur" (SURNOM;CATÉGORIE;TAILLECM), "matchs" (RONDE), "equipe" (NUM;SCORE;IDMATCH), "composition" (IDEQUIPE;IDJOUEUR).
+     * @param con connexion BDD
+     * @param tableName nom de la table (ex. "joueur")
+     * @param csvFile nom fichier CSV (ex. "joueur.csv")
+     * @throws SQLException erreur SQL ou fichier
+     */
+    public static void importCSV(Connection con, String tableName, String csvFile) throws SQLException {
+        con.setAutoCommit(false);
+        try (BufferedReader reader = new BufferedReader(new FileReader(csvFile))) {
+            String line;
+            boolean headerSkipped = false;
+            int importedCount = 0;
+            while ((line = reader.readLine()) != null) {
+                if (!headerSkipped) {
+                    headerSkipped = true;
+                    continue;  // Skip header
+                }
+                // Split ligne par ; (délimiteur), -1 pour garder vides
+                String[] values = line.split(";", -1);
+                if (values.length < 2) continue;  // Skip lignes invalides
+
+                // Nettoie guillemets sur chaque valeur
+                for (int i = 0; i < values.length; i++) {
+                    values[i] = values[i].replace("\"", "").trim();
+                }
+
+                // Cas par table (skip ID si présent, assume export SELECT *)
+                if ("joueur".equals(tableName) && values.length >= 4) {
+                    String surnom = values[1];  // Skip ID (index 0)
+                    String categorie = "NULL".equals(values[2]) ? null : values[2];
+                    Integer tailleCm = "NULL".equals(values[3]) ? null : Integer.parseInt(values[3]);
+                    try (PreparedStatement pst = con.prepareStatement(
+                            "INSERT INTO joueur (SURNOM, CATEGORIE, TAILLECM) VALUES (?, ?, ?)")) {
+                        pst.setString(1, surnom);
+                        pst.setString(2, categorie);
+                        if (tailleCm != null) {
+                            pst.setInt(3, tailleCm);
+                        } else {
+                            pst.setNull(3, Types.INTEGER);
+                        }
+                        pst.executeUpdate();
+                        importedCount++;
+                    } catch (NumberFormatException ex) {
+                        System.out.println("Ligne ignorée (taille invalide) : " + line);
+                    }
+                } else if ("matchs".equals(tableName) && values.length >= 2) {
+                    Integer ronde = "NULL".equals(values[1]) ? null : Integer.parseInt(values[1]);  // Skip ID
+                    if (ronde != null) {
+                        try (PreparedStatement pst = con.prepareStatement("INSERT INTO matchs (RONDE) VALUES (?)")) {
+                            pst.setInt(1, ronde);
+                            pst.executeUpdate();
+                            importedCount++;
+                        }
+                    }
+                } else if ("equipe".equals(tableName) && values.length >= 5) {
+                    Integer num = Integer.parseInt(values[1]);  // Skip ID
+                    Integer score = Integer.parseInt(values[2]);
+                    Integer idMatch = Integer.parseInt(values[3]);
+                    try (PreparedStatement pst = con.prepareStatement(
+                            "INSERT INTO equipe (NUM, SCORE, IDMATCH) VALUES (?, ?, ?)")) {
+                        pst.setInt(1, num);
+                        pst.setInt(2, score);
+                        pst.setInt(3, idMatch);
+                        pst.executeUpdate();
+                        importedCount++;
+                    } catch (NumberFormatException ex) {
+                        System.out.println("Ligne ignorée (équipe invalide) : " + line);
+                    }
+                } else if ("composition".equals(tableName) && values.length >= 3) {
+                    Integer idEquipe = Integer.parseInt(values[1]);  // Skip ID si présent
+                    Integer idJoueur = Integer.parseInt(values[2]);
+                    try (PreparedStatement pst = con.prepareStatement(
+                            "INSERT INTO composition (IDEQUIPE, IDJOUEUR) VALUES (?, ?)")) {
+                        pst.setInt(1, idEquipe);
+                        pst.setInt(2, idJoueur);
+                        pst.executeUpdate();
+                        importedCount++;
+                    } catch (NumberFormatException ex) {
+                        System.out.println("Ligne ignorée (composition invalide) : " + line);
+                    }
+                } else {
+                    System.out.println("Table " + tableName + " non supportée ou ligne invalide : " + line);
+                }
+            }
+            con.commit();
+            System.out.println("Importé " + csvFile + " dans " + tableName + " (" + importedCount + " lignes ajoutées).");
+        } catch (IOException ex) {
+            con.rollback();
+            throw new SQLException("Erreur lecture fichier CSV : " + ex.getMessage(), ex);
+        } catch (NumberFormatException ex) {
+            con.rollback();
+            throw new SQLException("Erreur format nombre dans CSV : " + ex.getMessage(), ex);
+        } finally {
+            con.setAutoCommit(true);
         }
     }
 

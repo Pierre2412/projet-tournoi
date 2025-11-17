@@ -127,6 +127,7 @@ public class MainConsoleTournoi {
             System.out.println((i++) + ") Ordre SQL update quelconque");
             System.out.println((i++) + ") Requête SQL query quelconque");
             System.out.println((i++) + ") Export CSV d'une table");
+            System.out.println((i++) + ") Import CSV dans une table");
             System.out.println("0) Retour");
             rep = ConsoleFdB.entreeEntier("Votre choix : ");
             try {
@@ -150,6 +151,11 @@ public class MainConsoleTournoi {
                 } else if (rep == j++) {
                     exportCSV(con);
                 }
+                 else if (rep == j++) {
+                    String tableName = ConsoleFdB.entreeString("Table (joueur/matchs) : ");
+                    String csvFile = ConsoleFdB.entreeString("Fichier CSV : ");
+                    GestionBdD.importCSV(con, tableName, csvFile);
+                }  
             } catch (Exception ex) {
                 System.out.println(ExceptionsUtils.messageEtPremiersAppelsDansPackage(ex, "fr.insa", 3));
             }
