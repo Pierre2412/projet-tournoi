@@ -26,19 +26,13 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
-import fr.insa.toto.model.Joueur;
 
-/**
- * Classe miroir pour la table equipe.
- * Inspirée de Loisir, avec FK idMatch.
- */
 public class Equipe extends ClasseMiroir {
 
-    private int num;        // NOT NULL
-    private int score;      // NOT NULL
-    private int idMatch;    // NOT NULL, FK
+    private int num;
+    private int score;
+    private int idMatch;
 
-    // Constructeur pour nouvel objet (ID = -1)
     public Equipe(int num, int score, int idMatch) {
         super();
         this.num = num;
@@ -46,7 +40,6 @@ public class Equipe extends ClasseMiroir {
         this.idMatch = idMatch;
     }
 
-    // Constructeur pour load depuis BDD (avec ID)
     public Equipe(int id, int num, int score, int idMatch) {
         super(id);
         this.num = num;
@@ -56,7 +49,7 @@ public class Equipe extends ClasseMiroir {
 
     @Override
     public String toString() {
-        return "Equipe{id=" + this.getId() + ", num=" + num + ", score=" + score + ", idMatch=" + idMatch + '}';
+        return "Equipe " + num + " (Score: " + score + ")";
     }
 
     @Override
@@ -71,116 +64,63 @@ public class Equipe extends ClasseMiroir {
         return insert;
     }
 
-    // Méthode statique exemple : Toutes les équipes
-    public static List<Equipe> tousLesEquipes(Connection con) throws SQLException {
-        List<Equipe> res = new ArrayList<>();
-        try (PreparedStatement pst = con.prepareStatement("SELECT ID, NUM, SCORE, IDMATCH FROM equipe")) {
-            try (ResultSet allE = pst.executeQuery()) {
-                return fromResultSetToList(allE);
-            }
+    public void updateInDB(Connection con) throws SQLException {
+        if (this.getId() == -1) throw new ClasseMiroir.EntiteNonSauvegardee();
+        try (PreparedStatement update = con.prepareStatement(
+                "UPDATE equipe SET NUM = ?, SCORE = ?, IDMATCH = ? WHERE ID = ?")) {
+            update.setInt(1, this.getNum());
+            update.setInt(2, this.getScore());
+            update.setInt(3, this.getIdMatch());
+            update.setInt(4, this.getId());
+            update.executeUpdate();
         }
     }
     
-    // Équipes avec au moins un junior (q20)
-public static List<Integer> equipesAvecJunior(Connection con) throws SQLException {
-    List<Integer> res = new ArrayList<>();
-    try (PreparedStatement pst = con.prepareStatement(
-            "SELECT DISTINCT e.ID FROM equipe e JOIN composition c ON e.ID = c.IDEQUIPE " +
-            "JOIN joueur j ON c.IDJOUEUR = j.ID WHERE j.CATEGORIE = 'J'")) {
-        try (ResultSet rs = pst.executeQuery()) {
-            while (rs.next()) {
-                res.add(rs.getInt("ID"));
-            }
-        }
+    public void ajouterJoueur(Connection con, int idJoueur) throws SQLException {
+        if (this.getId() == -1) throw new ClasseMiroir.EntiteNonSauvegardee();
+        new Composition(this.getId(), idJoueur).save(con);
     }
-    return res;
-}
 
-// Ajouter joueur à équipe (insert composition)
-public void ajouterJoueur(Connection con, int idJoueur) throws SQLException {
-    if (this.getId() == -1) throw new ClasseMiroir.EntiteNonSauvegardee();
-    try (PreparedStatement pst = con.prepareStatement("INSERT INTO composition (IDEQUIPE, IDJOUEUR) VALUES (?, ?)")) {
-        pst.setInt(1, this.getId());
-        pst.setInt(2, idJoueur);
-        pst.executeUpdate();
-        System.out.println("Joueur " + idJoueur + " ajouté à équipe " + this.getId());
-    }
-}
-
-// Stats équipe : Nb catégories distinctes non null (q21)
-public int nbCategoriesDistinctes(Connection con) throws SQLException {
-    if (this.getId() == -1) throw new ClasseMiroir.EntiteNonSauvegardee();
-    try (PreparedStatement pst = con.prepareStatement(
-            "SELECT COUNT(DISTINCT j.CATEGORIE) FROM composition c JOIN joueur j ON c.IDJOUEUR = j.ID " +
-            "WHERE c.IDEQUIPE = ? AND j.CATEGORIE IS NOT NULL")) {
-        pst.setInt(1, this.getId());
-        try (ResultSet rs = pst.executeQuery()) {
-            if (rs.next()) return rs.getInt(1);
-            return 0;
-        }
-    }
-}
-
-    /**
-     * Suppose que le resultset contient bien une table d'équipes.
-     */
-    private static List<Equipe> fromResultSetToList(ResultSet equipes) throws SQLException {
+    public static List<Equipe> tousLesEquipes(Connection con) throws SQLException {
         List<Equipe> res = new ArrayList<>();
-        while (equipes.next()) {
-            res.add(new Equipe(
-                    equipes.getInt("ID"),
-                    equipes.getInt("NUM"),
-                    equipes.getInt("SCORE"),
-                    equipes.getInt("IDMATCH")
-            ));
+        try (PreparedStatement pst = con.prepareStatement("SELECT ID, NUM, SCORE, IDMATCH FROM equipe")) {
+            try (ResultSet rs = pst.executeQuery()) {
+                while(rs.next()) res.add(new Equipe(rs.getInt("ID"), rs.getInt("NUM"), rs.getInt("SCORE"), rs.getInt("IDMATCH")));
+            }
         }
         return res;
     }
 
-    // Delete exemple (gère dépendances si besoin, ex. composition)
-    public void deleteInDB(Connection con) throws SQLException {
-        if (this.getId() == -1) {
-            throw new ClasseMiroir.EntiteNonSauvegardee();
-        }
-        try {
-            con.setAutoCommit(false);
-            // Supprime dépendances (ex. composition)
-            try (PreparedStatement pst = con.prepareStatement("DELETE FROM composition WHERE IDEQUIPE = ?")) {
-                pst.setInt(1, this.getId());
-                pst.executeUpdate();
+    public static List<Equipe> equipesPourMatch(Connection con, int idMatch) throws SQLException {
+        List<Equipe> res = new ArrayList<>();
+        try (PreparedStatement pst = con.prepareStatement("SELECT ID, NUM, SCORE, IDMATCH FROM equipe WHERE IDMATCH = ?")) {
+            pst.setInt(1, idMatch);
+            try (ResultSet rs = pst.executeQuery()) {
+                while (rs.next()) {
+                    res.add(new Equipe(rs.getInt("ID"), rs.getInt("NUM"), rs.getInt("SCORE"), rs.getInt("IDMATCH")));
+                }
             }
-            // Supprime l'équipe
-            try (PreparedStatement pst = con.prepareStatement("DELETE FROM equipe WHERE ID = ?")) {
-                pst.setInt(1, this.getId());
-                pst.executeUpdate();
-            }
-            this.entiteSupprimee();
-            con.commit();
-        } catch (SQLException ex) {
-            con.rollback();
-            throw ex;
-        } finally {
-            con.setAutoCommit(true);
         }
+        return res;
     }
-    
+
+    // Méthode corrigée pour récupérer les joueurs avec le nouveau constructeur (Total Score)
     public List<Joueur> getJoueurs(Connection con) throws SQLException {
         if (this.getId() == -1) throw new ClasseMiroir.EntiteNonSauvegardee();
         List<Joueur> res = new ArrayList<>();
-        // Jointure entre composition et joueur
-        String sql = "SELECT j.ID, j.SURNOM, j.CATEGORIE, j.TAILLECM " +
-                     "FROM joueur j " +
-                     "JOIN composition c ON j.ID = c.IDJOUEUR " +
-                     "WHERE c.IDEQUIPE = ?";
+        String sql = "SELECT j.ID, j.SURNOM, j.CATEGORIE, j.TAILLECM, j.ROLE, j.TOTAL_SCORE " +
+                     "FROM joueur j JOIN composition c ON j.ID = c.IDJOUEUR WHERE c.IDEQUIPE = ?";
         try (PreparedStatement pst = con.prepareStatement(sql)) {
             pst.setInt(1, this.getId());
             try (ResultSet rs = pst.executeQuery()) {
                 while (rs.next()) {
-                    res.add(new Joueur(
+                    res.add(new Joueur(  
                             rs.getInt("ID"),
                             rs.getString("SURNOM"),
                             rs.getString("CATEGORIE"),
-                            rs.getObject("TAILLECM") != null ? rs.getInt("TAILLECM") : null
+                            rs.getObject("TAILLECM") != null ? rs.getInt("TAILLECM") : null,
+                            rs.getString("ROLE"),
+                            rs.getObject("TOTAL_SCORE") != null ? rs.getInt("TOTAL_SCORE") : 0 // Gestion du null
                     ));
                 }
             }

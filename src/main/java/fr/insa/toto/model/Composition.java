@@ -18,7 +18,6 @@ along with CoursBeuvron.  If not, see <http://www.gnu.org/licenses/>.
  */
 package fr.insa.toto.model;
 
-import fr.insa.beuvron.utils.database.ConnectionSimpleSGBD;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -26,54 +25,34 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Classe pour la table composition (clé composite, pas d'ID auto).
- * Inspirée de la gestion des tables de liaison dans BdDTest (pratique/apprecie).
- */
 public class Composition {
 
-    private int idEquipe;   // FK
-    private int idJoueur;   // FK
+    private int idEquipe;
+    private int idJoueur;
 
     public Composition(int idEquipe, int idJoueur) {
         this.idEquipe = idEquipe;
         this.idJoueur = idJoueur;
     }
 
+    // Permet de sauvegarder directement à la création
     public Composition(int idEquipe, int idJoueur, Connection con) throws SQLException {
         this(idEquipe, idJoueur);
-        this.save(con);  // Save immédiat si besoin
+        this.save(con);
     }
 
-    // Save : Insert direct (pas d'ID auto)
     public void save(Connection con) throws SQLException {
+        // Utilise INSERT IGNORE pour éviter les doublons si on ré-exécute par erreur
         try (PreparedStatement pst = con.prepareStatement(
                 "INSERT INTO composition (IDEQUIPE, IDJOUEUR) VALUES (?, ?)")) {
-            pst.setInt(1, this.getIdEquipe());
-            pst.setInt(2, this.getIdJoueur());
-            pst.executeUpdate();
-        }
-    }
-
-    // Méthode statique : Load pour une équipe (retourne liste des ID joueurs)
-    public static List<Integer> loadIdJoueursPourEquipe(Connection con, int idEquipe) throws SQLException {
-        List<Integer> res = new ArrayList<>();
-        try (PreparedStatement pst = con.prepareStatement("SELECT IDJOUEUR FROM composition WHERE IDEQUIPE = ?")) {
-            pst.setInt(1, idEquipe);
-            try (ResultSet rs = pst.executeQuery()) {
-                while (rs.next()) {
-                    res.add(rs.getInt("IDJOUEUR"));
-                }
+            pst.setInt(1, this.idEquipe);
+            pst.setInt(2, this.idJoueur);
+            try {
+                pst.executeUpdate();
+            } catch (SQLException ex) {
+                // Si c'est une erreur de duplication (déjà existant), on ignore
+                if (!ex.getMessage().contains("Duplicate")) throw ex;
             }
-        }
-        return res;
-    }
-
-    // Delete pour une équipe (supprime toutes compo)
-    public static void deleteForEquipe(Connection con, int idEquipe) throws SQLException {
-        try (PreparedStatement pst = con.prepareStatement("DELETE FROM composition WHERE IDEQUIPE = ?")) {
-            pst.setInt(1, idEquipe);
-            pst.executeUpdate();
         }
     }
 

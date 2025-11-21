@@ -16,384 +16,393 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with CoursBeuvron.  If not, see <http://www.gnu.org/licenses/>.
  */
+/*
+ * Fichier : MainConsoleTournoi.java
+ * Gestion complète du tournoi en mode console.
+ */
 package fr.insa.toto.model;
 
 import fr.insa.beuvron.utils.ConsoleFdB;
 import fr.insa.beuvron.utils.database.ConnectionSimpleSGBD;
-import fr.insa.beuvron.utils.database.ResultSetUtils; // Note: Utils au pluriel, comme dans le fourni
-import fr.insa.beuvron.utils.exceptions.ExceptionsUtils;
 import fr.insa.beuvron.utils.list.ListUtils;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Classe pour gérer la base de données en mode console pour le projet tournoi.
- * Inspirée de MainConsole du projet fourni.
- * Utilise ResultSetUtils pour affichage, ListUtils pour sélection d'éléments,
- * et les classes miroirs (Joueur, Equipe, etc.) pour opérations CRUD.
- * Modifications ajoutées : Options pour recherches avancées (ex. par taille), delete par catégorie,
- * et intégration des nouvelles méthodes (joueursPlusTaille, deleteParCategorie, etc.).
- */
 public class MainConsoleTournoi {
 
-    public static void menuJoueurs(Connection con) {
-        int rep = -1;
-        while (rep != 0) {
-            int i = 1;
-            System.out.println("Menu joueurs");
-            System.out.println("============================");
-            System.out.println((i++) + ") Liste des joueurs (q1)");
-            System.out.println((i++) + ") Ajouter un joueur");
-            System.out.println((i++) + ") Supprimer un joueur");
-            System.out.println((i++) + ") Modifier taille d'un joueur");
-            System.out.println((i++) + ") Joueurs > 1.6m (q5)");
-            System.out.println((i++) + ") Moyenne tailles par catégorie (q11)");
-            System.out.println((i++) + ") Recherche joueurs > taille (général)");
-            System.out.println((i++) + ") Delete par catégorie");
-            System.out.println("0) Retour");
-            rep = ConsoleFdB.entreeEntier("Votre choix : ");
-            try {
-                int j = 1;
-                if (rep == j++) {
-                    listerJoueurs(con);
-                } else if (rep == j++) {
-                    ajouterJoueur(con);
-                } else if (rep == j++) {
-                    supprimerJoueur(con);
-                } else if (rep == j++) {
-                    modifierTailleJoueur(con);
-                } else if (rep == j++) {
-                    joueursPlus160(con);
-                } else if (rep == j++) {
-                    moyenneTaillesParCategorie(con);
-                } else if (rep == j++) {
-                    rechercheJoueursPlusTaille(con);
-                } else if (rep == j++) {
-                    deleteParCategorie(con);
-                }
-            } catch (Exception ex) {
-                System.out.println(ExceptionsUtils.messageEtPremiersAppelsDansPackage(ex, "fr.insa", 3));
-            }
-        }
-    }
-
-    public static void menuEquipes(Connection con) {
-        int rep = -1;
-        while (rep != 0) {
-            int i = 1;
-            System.out.println("Menu équipes");
-            System.out.println("============================");
-            System.out.println((i++) + ") Liste des équipes (q3)");
-            System.out.println((i++) + ") Ajouter une équipe");
-            System.out.println((i++) + ") Équipes avec au moins un junior (q20)");
-            System.out.println((i++) + ") Équipes avec J et S (q22)");
-            System.out.println((i++) + ") Ajouter joueur à équipe");
-            System.out.println((i++) + ") Nb catégories distinctes pour une équipe (q21)");
-            System.out.println("0) Retour");
-            rep = ConsoleFdB.entreeEntier("Votre choix : ");
-            try {
-                int j = 1;
-                if (rep == j++) {
-                    listerEquipes(con);
-                } else if (rep == j++) {
-                    ajouterEquipe(con);
-                } else if (rep == j++) {
-                    equipesAvecJunior(con);
-                } else if (rep == j++) {
-                    equipesAvecJuniorEtSenior(con);
-                } else if (rep == j++) {
-                    ajouterJoueurAEquipe(con);
-                } else if (rep == j++) {
-                    nbCategoriesPourEquipe(con);
-                }
-            } catch (Exception ex) {
-                System.out.println(ExceptionsUtils.messageEtPremiersAppelsDansPackage(ex, "fr.insa", 3));
-            }
-        }
-    }
-
-    public static void menuBdD(Connection con) {
-        int rep = -1;
-        while (rep != 0) {
-            int i = 1;
-            System.out.println("Menu gestion base de données");
-            System.out.println("============================");
-            System.out.println((i++) + ") RAZ BdD = delete + create + init données exemple");
-            System.out.println((i++) + ") Ordre SQL update quelconque");
-            System.out.println((i++) + ") Requête SQL query quelconque");
-            System.out.println((i++) + ") Export CSV d'une table");
-            System.out.println((i++) + ") Import CSV dans une table");
-            System.out.println("0) Retour");
-            rep = ConsoleFdB.entreeEntier("Votre choix : ");
-            try {
-                int j = 1;
-                if (rep == j++) {
-                    GestionBdD.razBdd(con);
-                    BdDTestTournoi.createBdDTestTournoi(con);
-                    System.out.println("BDD remise à zéro et peuplée avec données exemple (q1-q4).");
-                } else if (rep == j++) {
-                    String ordre = ConsoleFdB.entreeString("Ordre SQL update : ");
-                    try (PreparedStatement pst = con.prepareStatement(ordre)) {
-                        int rows = pst.executeUpdate();
-                        System.out.println(rows + " lignes affectées.");
-                    }
-                } else if (rep == j++) {
-                    String ordre = ConsoleFdB.entreeString("Requête SQL : ");
-                    try (PreparedStatement pst = con.prepareStatement(ordre);
-                         ResultSet rs = pst.executeQuery()) {
-                        System.out.println(ResultSetUtils.formatResultSetAsTxt(rs));
-                    }
-                } else if (rep == j++) {
-                    exportCSV(con);
-                }
-                 else if (rep == j++) {
-                    String tableName = ConsoleFdB.entreeString("Table (joueur/matchs) : ");
-                    String csvFile = ConsoleFdB.entreeString("Fichier CSV : ");
-                    GestionBdD.importCSV(con, tableName, csvFile);
-                }  
-            } catch (Exception ex) {
-                System.out.println(ExceptionsUtils.messageEtPremiersAppelsDansPackage(ex, "fr.insa", 3));
-            }
-        }
-    }
-
-    // Méthodes utilitaires pour les menus (exemples inspirés de menuUtilisateur)
-    private static void listerJoueurs(Connection con) throws SQLException {
-        List<Joueur> tous = Joueur.tousLesJoueurs(con);
-        System.out.println(tous.size() + " joueurs trouvés :");
-        System.out.println(ListUtils.enumerateList(tous, " ", 1, " : ", "\n", j -> j.getId() + " - " + j.getSurnom() + " (" + j.getCategorie() + ", " + j.getTailleCm() + "cm)"));
-    }
-
-    private static void ajouterJoueur(Connection con) throws SQLException {
-        System.out.println("Nouvel joueur : ");
-        Joueur j = Joueur.entreeConsole(); // Utilise la méthode statique si implémentée
-        if (!j.isValid()) {
-            System.out.println("Erreur : Surnom invalide ou taille <=0.");
-            return;
-        }
-        j.saveInDB(con);
-        System.out.println("Joueur ajouté avec ID : " + j.getId());
-    }
-
-    private static void supprimerJoueur(Connection con) throws SQLException {
-        List<Joueur> tous = Joueur.tousLesJoueurs(con);
-        List<Joueur> selected = ListUtils.selectMultiple("Sélectionnez les joueurs à supprimer : ", tous,
-                j -> j.getId() + " : " + j.getSurnom());
-        for (Joueur j : selected) {
-            j.deleteInDB(con);
-        }
-        System.out.println(selected.size() + " joueur(s) supprimé(s).");
-    }
-
-    private static void modifierTailleJoueur(Connection con) throws SQLException {
-        List<Joueur> tous = Joueur.tousLesJoueurs(con);
-        Optional<Joueur> choisi = ListUtils.selectOneOrCancel("Choisissez un joueur à modifier : ", tous,
-                j -> j.getId() + " : " + j.getSurnom());
-        if (choisi.isPresent()) {
-            Joueur j = choisi.get();
-            Integer nouvelleTaille = ConsoleFdB.entreeInt("Nouvelle taille (0 pour null) : ");
-            j.setTailleCm(nouvelleTaille == 0 ? null : nouvelleTaille);
-            j.updateInDB(con); // Utilise updateInDB au lieu de saveInDB pour existant
-            System.out.println("Taille mise à jour.");
-        }
-    }
-
-    private static void joueursPlus160(Connection con) throws SQLException {
-        try (PreparedStatement pst = con.prepareStatement("SELECT ID, SURNOM, CATEGORIE, TAILLECM FROM joueur WHERE TAILLECM > 160");
-             ResultSet rs = pst.executeQuery()) {
-            System.out.println("Joueurs > 1.6m (q5) :");
-            System.out.println(ResultSetUtils.formatResultSetAsTxt(rs));
-        }
-    }
-
-    private static void moyenneTaillesParCategorie(Connection con) throws SQLException {
-        try (PreparedStatement pst = con.prepareStatement("SELECT CATEGORIE, AVG(TAILLECM) AS MOYTAILLE FROM joueur GROUP BY CATEGORIE");
-             ResultSet rs = pst.executeQuery()) {
-            System.out.println("Moyenne tailles par catégorie (q11) :");
-            System.out.println(ResultSetUtils.formatResultSetAsTxt(rs));
-        }
-    }
-
-    // Nouvelle méthode : Recherche générale > taille
-    private static void rechercheJoueursPlusTaille(Connection con) throws SQLException {
-        int tailleMin = ConsoleFdB.entreeInt("Taille min (cm) : ");
-        List<Joueur> result = Joueur.joueursPlusTaille(con, tailleMin);
-        System.out.println(result.size() + " joueurs > " + tailleMin + "cm :");
-        System.out.println(ListUtils.enumerateList(result, " ", 1, " : ", "\n", j -> j.toString()));
-    }
-
-    // Nouvelle méthode : Delete par catégorie
-    private static void deleteParCategorie(Connection con) throws SQLException {
-        String cat = ConsoleFdB.entreeString("Catégorie à supprimer (J/S/null) : ");
-        Joueur.deleteParCategorie(con, cat.isEmpty() ? null : cat);
-    }
-
-    private static void listerEquipes(Connection con) throws SQLException {
-        List<Equipe> toutes = Equipe.tousLesEquipes(con);
-        System.out.println(toutes.size() + " équipes trouvées :");
-        System.out.println(ListUtils.enumerateList(toutes, " ", 1, " : ", "\n", e -> e.getId() + " - Num " + e.getNum() + " (Score " + e.getScore() + ", Match " + e.getIdMatch() + ")"));
-    }
-
-    private static void ajouterEquipe(Connection con) throws SQLException {
-        int num = ConsoleFdB.entreeInt("Num équipe : ");
-        int score = ConsoleFdB.entreeInt("Score : ");
-        int idMatch = ConsoleFdB.entreeInt("ID Match : ");
-        Equipe e = new Equipe(num, score, idMatch);
-        e.saveInDB(con);
-        System.out.println("Équipe ajoutée avec ID : " + e.getId());
-    }
-
-    private static void equipesAvecJunior(Connection con) throws SQLException {
-        try (PreparedStatement pst = con.prepareStatement(
-                "SELECT DISTINCT e.ID FROM equipe e " +
-                "JOIN composition c ON e.ID = c.IDEQUIPE " +
-                "JOIN joueur j ON c.IDJOUEUR = j.ID " +
-                "WHERE j.CATEGORIE = 'J'");
-             ResultSet rs = pst.executeQuery()) {
-            System.out.println("Équipes avec au moins un junior (q20) :");
-            System.out.println(ResultSetUtils.formatResultSetAsTxt(rs));
-        }
-    }
-
-    private static void equipesAvecJuniorEtSenior(Connection con) throws SQLException {
-        try (PreparedStatement pst = con.prepareStatement(
-                "SELECT e.ID FROM equipe e " +
-                "WHERE e.ID IN (SELECT c1.IDEQUIPE FROM composition c1 JOIN joueur j1 ON c1.IDJOUEUR = j1.ID WHERE j1.CATEGORIE = 'J') " +
-                "AND e.ID IN (SELECT c2.IDEQUIPE FROM composition c2 JOIN joueur j2 ON c2.IDJOUEUR = j2.ID WHERE j2.CATEGORIE = 'S')");
-             ResultSet rs = pst.executeQuery()) {
-            System.out.println("Équipes avec au moins un J et un S (q22) :");
-            System.out.println(ResultSetUtils.formatResultSetAsTxt(rs));
-        }
-    }
-
-    // Nouvelle méthode : Ajouter joueur à équipe
-    private static void ajouterJoueurAEquipe(Connection con) throws SQLException {
-        List<Equipe> equipes = Equipe.tousLesEquipes(con);
-        Optional<Equipe> equipeChoisie = ListUtils.selectOneOrCancel("Choisissez une équipe : ", equipes,
-                e -> e.getId() + " : " + e.toString());
-        if (equipeChoisie.isPresent()) {
-            Equipe e = equipeChoisie.get();
-            List<Joueur> joueurs = Joueur.tousLesJoueurs(con);
-            Optional<Joueur> joueurChoisi = ListUtils.selectOneOrCancel("Choisissez un joueur à ajouter : ", joueurs,
-                    j -> j.getId() + " : " + j.getSurnom());
-            if (joueurChoisi.isPresent()) {
-                e.ajouterJoueur(con, joueurChoisi.get().getId());
-            }
-        }
-    }
-
-    // Nouvelle méthode : Nb catégories pour une équipe
-    private static void nbCategoriesPourEquipe(Connection con) throws SQLException {
-        List<Equipe> equipes = Equipe.tousLesEquipes(con);
-        Optional<Equipe> equipeChoisie = ListUtils.selectOneOrCancel("Choisissez une équipe : ", equipes,
-                e -> e.getId() + " : " + e.toString());
-        if (equipeChoisie.isPresent()) {
-            int nb = equipeChoisie.get().nbCategoriesDistinctes(con);
-            System.out.println("Équipe " + equipeChoisie.get().getId() + " : " + nb + " catégories distinctes non null.");
-        }
-    }
-
-    // Nouvelle méthode : Export CSV
-    private static void exportCSV(Connection con) throws SQLException {
-        String tableName = ConsoleFdB.entreeString("Nom de la table à exporter (joueur/matchs/equipe/composition) : ");
-        GestionBdD.exportCSV(con, tableName);
-    }
+    // =========================================================================
+    // 1. MENU PRINCIPAL & CONNEXION
+    // =========================================================================
 
     public static void menuPrincipal() {
-        int rep = -1;
         Connection con = null;
         try {
             con = ConnectionSimpleSGBD.defaultCon();
-            System.out.println("Connexion OK");
-        } catch (SQLException ex) {
-            System.out.println("Problème de connexion : " + ex.getLocalizedMessage());
-            throw new Error(ex);
-        }
-        while (rep != 0) {
-            int i = 1;
-            System.out.println("Menu principal Tournoi");
-            System.out.println("======================");
-            System.out.println((i++) + ") Menu gestion BdD");
-            System.out.println((i++) + ") Menu joueurs");
-            System.out.println((i++) + ") Menu équipes");
-            System.out.println((i++) + ") Requêtes complexes (TD4)");
-            System.out.println("0) Fin");
-            rep = ConsoleFdB.entreeEntier("Votre choix : ");
-            try {
-                int j = 1;
-                if (rep == j++) {
-                    menuBdD(con);
-                } else if (rep == j++) {
-                    menuJoueurs(con);
-                } else if (rep == j++) {
-                    menuEquipes(con);
-                } else if (rep == j++) {
-                    menuRequetesComplexes(con); // Option pour TD4
+            
+            System.out.println("========================================");
+            System.out.println("   GESTION DE TOURNOI - PROJET 2025");
+            System.out.println("========================================");
+
+            // Login simplifié (Surnom) [cite: 36]
+            String surnom = ConsoleFdB.entreeString("Veuillez vous identifier (Surnom) : ");
+            Optional<Joueur> u = Joueur.findBySurnom(con, surnom);
+            
+            boolean isAdmin = false;
+            if (u.isPresent()) {
+                Joueur user = u.get();
+                // Vérification du rôle ('A' = Admin) [cite: 37]
+                if ("A".equals(user.getRole())) {
+                    isAdmin = true;
+                    System.out.println(">>> Bonjour ADMIN " + user.getSurnom() + " <<<");
+                } else {
+                    System.out.println(">>> Bonjour " + user.getSurnom() + " (Accès Standard) <<<");
                 }
-            } catch (Exception ex) {
-                System.out.println(ExceptionsUtils.messageEtPremiersAppelsDansPackage(ex, "fr.insa", 3));
+            } else {
+                System.out.println(">>> Utilisateur inconnu. Accès INVITÉ (Lecture seule) <<<");
             }
-        }
-        try {
-            if (con != null) con.close();
-        } catch (SQLException ex) {
-            // Ignore
+
+            int rep = -1;
+            while (rep != 0) {
+                System.out.println("\n---------------- MENU PRINCIPAL ----------------");
+                System.out.println("1) Menu Joueurs (Liste, Détails, Historique)");
+                System.out.println("2) Classement Général (Somme des scores)");
+                System.out.println("3) Menu Matchs & Résultats");
+                
+                if (isAdmin) {
+                    System.out.println("--- Administration ---");
+                    System.out.println("4) Gestion Tournois & Rondes");
+                    System.out.println("5) Gestion Terrains");
+                    System.out.println("6) Paramètres Globaux (Nb Terrains/Joueurs)");
+                    System.out.println("7) Outils BDD (Reset, Import/Export CSV)");
+                }
+                System.out.println("0) Quitter");
+                
+                rep = ConsoleFdB.entreeEntier("Votre choix : ");
+                
+                try {
+                    if (rep == 1) menuJoueurs(con, isAdmin);
+                    else if (rep == 2) afficherClassement(con);
+                    else if (rep == 3) menuResultats(con, isAdmin);
+                    else if (isAdmin) {
+                        if (rep == 4) menuTournoisRondes(con);
+                        else if (rep == 5) menuTerrains(con);
+                        else if (rep == 6) menuParametres(con);
+                        else if (rep == 7) menuOutilsBdd(con);
+                    }
+                } catch (Exception ex) {
+                    System.out.println("ERREUR : " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+            }
+            con.close();
+            System.out.println("Au revoir !");
+            
+        } catch (Exception ex) {
+            System.out.println("Erreur fatale de connexion : " + ex.getMessage());
+            ex.printStackTrace();
         }
     }
 
-    // Menu pour TD4 (exemples de queries complexes)
-    private static void menuRequetesComplexes(Connection con) {
+    // =========================================================================
+    // 2. GESTION DES JOUEURS
+    // =========================================================================
+
+    private static void menuJoueurs(Connection con, boolean isAdmin) throws SQLException {
         int rep = -1;
         while (rep != 0) {
-            int i = 1;
-            System.out.println("Menu requêtes complexes");
-            System.out.println("============================");
-            System.out.println((i++) + ") IDs joueurs équipe 1 (q14)");
-            System.out.println((i++) + ") Nombre matchs Toto (q16)");
-            System.out.println((i++) + ") Équipes avec nb catégories distinctes (q21)");
+            System.out.println("\n--- MENU JOUEURS ---");
+            System.out.println("1) Lister tous les joueurs [cite: 53]");
+            System.out.println("2) Voir détails d'un joueur (Historique & Stats) [cite: 54, 57]");
+            if (isAdmin) {
+                System.out.println("3) Ajouter un joueur [cite: 43]");
+                System.out.println("4) Supprimer un joueur [cite: 43]");
+            }
             System.out.println("0) Retour");
-            rep = ConsoleFdB.entreeEntier("Votre choix : ");
-            try {
-                int j = 1;
-                if (rep == j++) {
-                    try (PreparedStatement pst = con.prepareStatement("SELECT IDJOUEUR FROM composition WHERE IDEQUIPE = 1");
-                         ResultSet rs = pst.executeQuery()) {
-                        System.out.println("IDs joueurs équipe 1 (q14) :");
-                        System.out.println(ResultSetUtils.formatResultSetAsTxt(rs));
-                    }
-                } else if (rep == j++) {
-                    try (PreparedStatement pst = con.prepareStatement(
-                            "SELECT COUNT(DISTINCT e.IDMATCH) AS NBRMATCHTOTO " +
-                            "FROM joueur j JOIN composition c ON j.ID = c.IDJOUEUR " +
-                            "JOIN equipe e ON c.IDEQUIPE = e.ID " +
-                            "WHERE j.SURNOM = 'Toto'");
-                         ResultSet rs = pst.executeQuery()) {
-                        System.out.println("Nombre matchs Toto (q16) :");
-                        System.out.println(ResultSetUtils.formatResultSetAsTxt(rs));
-                    }
-                } else if (rep == j++) {
-                    try (PreparedStatement pst = con.prepareStatement(
-                            "SELECT e.ID, COUNT(DISTINCT j.CATEGORIE) AS NBRCAT " +
-                            "FROM equipe e JOIN composition c ON e.ID = c.IDEQUIPE " +
-                            "LEFT JOIN joueur j ON c.IDJOUEUR = j.ID AND j.CATEGORIE IS NOT NULL " +
-                            "GROUP BY e.ID");
-                         ResultSet rs = pst.executeQuery()) {
-                        System.out.println("Équipes avec nb catégories distinctes (q21) :");
-                        System.out.println(ResultSetUtils.formatResultSetAsTxt(rs));
-                    }
+            rep = ConsoleFdB.entreeEntier("Choix : ");
+
+            if (rep == 1) {
+                List<Joueur> tous = Joueur.tousLesJoueurs(con);
+                if (tous.isEmpty()) System.out.println("Aucun joueur.");
+                else tous.forEach(System.out::println);
+            } 
+            else if (rep == 2) {
+                afficherDetailsJoueur(con);
+            } 
+            else if (isAdmin && rep == 3) {
+                Joueur j = Joueur.entreeConsole();
+                j.saveInDB(con);
+                System.out.println("Joueur ajouté avec succès (ID " + j.getId() + ")");
+            } 
+            else if (isAdmin && rep == 4) {
+                List<Joueur> lst = Joueur.tousLesJoueurs(con);
+                Optional<Joueur> j = ListUtils.selectOneOrCancel("Sélectionnez le joueur à supprimer :", lst, Joueur::toString);
+                if (j.isPresent()) {
+                    j.get().deleteInDB(con); // Utilise la méthode ajoutée précédemment
                 }
-            } catch (Exception ex) {
-                System.out.println(ExceptionsUtils.messageEtPremiersAppelsDansPackage(ex, "fr.insa", 3));
             }
         }
     }
 
+    // Affichage détaillé demandé par le PDF (Source 57)
+    private static void afficherDetailsJoueur(Connection con) throws SQLException {
+        List<Joueur> joueurs = Joueur.tousLesJoueurs(con);
+        Optional<Joueur> choix = ListUtils.selectOneOrCancel("Voir détails de quel joueur ?", joueurs, Joueur::getSurnom);
+        
+        if (choix.isPresent()) {
+            Joueur j = choix.get();
+            System.out.println("\n=== FICHE JOUEUR : " + j.getSurnom() + " ===");
+            System.out.println("Catégorie    : " + (j.getCategorie() != null ? j.getCategorie() : "N/A"));
+            System.out.println("Taille       : " + (j.getTailleCm() != null ? j.getTailleCm() + " cm" : "N/A"));
+            System.out.println("Score Total  : " + j.getTotalScore() + " points"); // [cite: 35]
+            
+            System.out.println("\n--- Historique des Matchs ---");
+            // Requête pour récupérer Ronde, Statut, Score et Terrain pour ce joueur
+            String sql = "SELECT r.NUMERO as RONDE_NUM, m.STATUT as M_STATUT, e.SCORE, t.NOM as TERRAIN " +
+                         "FROM composition c " +
+                         "JOIN equipe e ON c.IDEQUIPE = e.ID " +
+                         "JOIN matchs m ON e.IDMATCH = m.ID " +
+                         "JOIN ronde r ON m.ID_RONDE = r.ID " +
+                         "JOIN terrain t ON m.ID_TERRAIN = t.ID " +
+                         "WHERE c.IDJOUEUR = ? " +
+                         "ORDER BY r.NUMERO";
+                         
+            try (PreparedStatement pst = con.prepareStatement(sql)) {
+                pst.setInt(1, j.getId());
+                try (ResultSet rs = pst.executeQuery()) {
+                    System.out.printf("%-8s | %-12s | %-8s | %-15s%n", "Ronde", "Statut", "Score", "Terrain");
+                    System.out.println("-------------------------------------------------------");
+                    boolean aJoue = false;
+                    while (rs.next()) {
+                        aJoue = true;
+                        System.out.printf("%-8d | %-12s | %-8d | %-15s%n", 
+                            rs.getInt("RONDE_NUM"), 
+                            rs.getString("M_STATUT"), 
+                            rs.getInt("SCORE"), 
+                            rs.getString("TERRAIN"));
+                    }
+                    if (!aJoue) System.out.println("   Aucun match joué pour le moment.");
+                }
+            }
+            System.out.println("=============================================\n");
+        }
+    }
+
+    private static void afficherClassement(Connection con) throws SQLException {
+        // 1. Forcer le recalcul des scores avant affichage [cite: 16]
+        Joueur.mettreAJourClassementGeneral(con);
+        
+        System.out.println("\n=== CLASSEMENT GÉNÉRAL (Somme des points) ===");
+        try (PreparedStatement pst = con.prepareStatement(
+                "SELECT SURNOM, TOTAL_SCORE FROM joueur ORDER BY TOTAL_SCORE DESC")) {
+            try (ResultSet rs = pst.executeQuery()) {
+                int rang = 1;
+                System.out.printf("%-5s | %-20s | %-10s%n", "Rang", "Surnom", "Points");
+                System.out.println("-----------------------------------------");
+                while (rs.next()) {
+                    System.out.printf("%-5d | %-20s | %-10d%n", 
+                        rang++, rs.getString("SURNOM"), rs.getInt("TOTAL_SCORE"));
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // 3. GESTION TOURNOIS & RONDES (Algorithme de création)
+    // =========================================================================
+    
+    private static void menuTournoisRondes(Connection con) throws SQLException {
+        int rep = -1;
+        while (rep != 0) {
+            System.out.println("\n--- GESTION TOURNOIS & RONDES ---");
+            System.out.println("1) Lister les tournois");
+            System.out.println("2) Créer un nouveau tournoi [cite: 42]");
+            System.out.println("3) Gérer les rondes d'un tournoi (Création/Visualisation)");
+            System.out.println("0) Retour");
+            rep = ConsoleFdB.entreeEntier("Choix : ");
+            
+            if (rep == 1) {
+                Tournoi.tousLesTournois(con).forEach(System.out::println);
+            } else if (rep == 2) {
+                String nom = ConsoleFdB.entreeString("Nom du tournoi : ");
+                // Pour simplifier en console, on met des dates nulles ou fictives
+                Tournoi t = new Tournoi(nom, null, null); 
+                t.saveInDB(con);
+                System.out.println("Tournoi créé : " + t);
+            } else if (rep == 3) {
+                List<Tournoi> ts = Tournoi.tousLesTournois(con);
+                Optional<Tournoi> t = ListUtils.selectOneOrCancel("Choisir un tournoi :", ts, Tournoi::getNom);
+                if (t.isPresent()) {
+                    menuRondesDuTournoi(con, t.get());
+                }
+            }
+        }
+    }
+    
+    private static void menuRondesDuTournoi(Connection con, Tournoi t) throws SQLException {
+        System.out.println("\n--- RONDES DU TOURNOI : " + t.getNom() + " ---");
+        System.out.println("1) Lister les rondes existantes");
+        System.out.println("2) CRÉER UNE NOUVELLE RONDE (Génération automatique) [cite: 44, 46]");
+        int r = ConsoleFdB.entreeEntier("Choix : ");
+        
+        if (r == 1) {
+             try (PreparedStatement pst = con.prepareStatement("SELECT * FROM ronde WHERE ID_TOURNOI = ? ORDER BY NUMERO")) {
+                 pst.setInt(1, t.getId());
+                 try (ResultSet rs = pst.executeQuery()) {
+                     boolean found = false;
+                     while(rs.next()) {
+                         found = true;
+                         System.out.println("Ronde N°" + rs.getInt("NUMERO") + " - Etat : " + rs.getString("ETAT"));
+                     }
+                     if (!found) System.out.println("Aucune ronde créée.");
+                 }
+             }
+        } else if (r == 2) {
+            int num = ConsoleFdB.entreeInt("Numéro de la nouvelle ronde : ");
+            Ronde ronde = new Ronde(num, t.getId());
+            ronde.saveInDB(con); 
+            
+            // --- REMPLACEZ L'APPEL ICI ---
+            ServiceTournoi.creerRondeAleatoire(con, ronde.getId());
+            // -----------------------------
+        }
+    }
+
+
+    // =========================================================================
+    // 4. RESULTATS & MATCHS
+    // =========================================================================
+
+    private static void menuResultats(Connection con, boolean isAdmin) throws SQLException {
+        int rep = -1;
+        while (rep != 0) {
+            System.out.println("\n--- MATCHS & RÉSULTATS ---");
+            System.out.println("1) Voir les matchs en cours [cite: 48]");
+            if (isAdmin) System.out.println("2) Saisir le score d'un match (Admin) [cite: 49, 50]");
+            System.out.println("0) Retour");
+            rep = ConsoleFdB.entreeEntier("Choix : ");
+            
+            if (rep == 1) {
+                List<Matchs> ouverts = Matchs.matchsOuverts(con);
+                if (ouverts.isEmpty()) System.out.println("Aucun match en cours.");
+                else ouverts.forEach(System.out::println);
+            } 
+            else if (isAdmin && rep == 2) {
+                List<Matchs> matchs = Matchs.matchsOuverts(con);
+                Optional<Matchs> mOpt = ListUtils.selectOneOrCancel("Sélectionnez le match à noter :", matchs, Matchs::toString);
+                
+                if (mOpt.isPresent()) {
+                    Matchs m = mOpt.get();
+                    List<Equipe> eqs = Equipe.equipesPourMatch(con, m.getId());
+                    
+                    if (eqs.size() < 2) {
+                        System.out.println("Erreur : Ce match n'a pas d'équipes valides.");
+                        continue;
+                    }
+
+                    // Saisie des scores pour chaque équipe
+                    for (Equipe e : eqs) {
+                        System.out.print("Score pour Equipe " + e.getNum() + " (Joueurs: ");
+                        // Affichage des joueurs de l'équipe pour aider l'admin
+                        List<Joueur> membres = Joueur.joueursPourEquipe(con, e.getId());
+                        membres.forEach(j -> System.out.print(j.getSurnom() + " "));
+                        System.out.print(") : ");
+                        
+                        int sc = ConsoleFdB.entreeInt("");
+                        e.setScore(sc);
+                        e.updateInDB(con);
+                    }
+                    
+                    // Clôture du match [cite: 51]
+                    m.setStatut("clos");
+                    m.updateInDB(con);
+                    System.out.println("✅ Match clos et scores enregistrés.");
+                    
+                    // Mise à jour immédiate du classement général [cite: 16]
+                    Joueur.mettreAJourClassementGeneral(con);
+                    
+                    // Vérification fin de ronde [cite: 52]
+                    if (Ronde.tousMatchsRondeClos(con, m.getIdRonde())) {
+                        new Ronde(m.getIdRonde(), 0, 0, "").setEtat(con, "close");
+                        System.out.println("🏁 TOUS LES MATCHS SONT TERMINÉS : LA RONDE EST CLÔTURÉE !");
+                    }
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // 5. PARAMÈTRES & OUTILS DIVERS
+    // =========================================================================
+    
+    private static void menuParametres(Connection con) throws SQLException {
+        Parametres p = Parametres.load(con);
+        System.out.println("\n--- CONFIGURATION GLOBALE DU TOURNOI --- [cite: 24, 27]");
+        System.out.println("Nombre de terrains utilisables simultanément : " + p.getNbTerrains());
+        System.out.println("Nombre de joueurs par équipe                 : " + p.getNbJoueursParEquipe());
+        
+        System.out.println("1) Modifier");
+        System.out.println("0) Retour");
+        if (ConsoleFdB.entreeEntier("Choix : ") == 1) {
+            int nbT = ConsoleFdB.entreeInt("Nouveau nb terrains : ");
+            int nbJ = ConsoleFdB.entreeInt("Nouveau nb joueurs/équipe : ");
+            p.setNbTerrains(nbT);
+            p.setNbJoueursParEquipe(nbJ);
+            p.save(con);
+            System.out.println("Paramètres sauvegardés.");
+        }
+    }
+    
+    private static void menuTerrains(Connection con) throws SQLException {
+        System.out.println("\n--- GESTION TERRAINS ---");
+        System.out.println("1) Lister");
+        System.out.println("2) Ajouter");
+        int c = ConsoleFdB.entreeEntier("Choix : ");
+        if (c == 2) {
+            String n = ConsoleFdB.entreeString("Nom (ex: Court A) : ");
+            String t = ConsoleFdB.entreeString("Type (C=Couvert / O=Ouvert) : ");
+            new Terrain(n, t).saveInDB(con);
+            System.out.println("Terrain ajouté.");
+        } else if (c == 1) {
+            Terrain.tousLesTerrains(con).forEach(System.out::println);
+        }
+    }
+
+    private static void menuOutilsBdd(Connection con) throws SQLException {
+        System.out.println("\n--- OUTILS BDD ---");
+        System.out.println("1) RAZ BDD (Attention : Efface tout !)");
+        System.out.println("2) Import CSV");
+        System.out.println("3) Export CSV");
+        int c = ConsoleFdB.entreeEntier("Choix : ");
+        
+        if (c == 1) {
+            String confirm = ConsoleFdB.entreeString("Tapez 'OUI' pour confirmer l'effacement complet : ");
+            if ("OUI".equals(confirm)) {
+                GestionBdD.razBdd(con);
+                // Optionnel : On peut relancer le script de test pour remettre des données
+                // BdDTestTournoi.createBdDTestTournoi(con); 
+                System.out.println("Base de données réinitialisée.");
+            }
+        } else if (c == 2) {
+            String t = ConsoleFdB.entreeString("Nom de la table (ex: joueur) : ");
+            String f = ConsoleFdB.entreeString("Chemin du fichier CSV : ");
+            GestionBdD.importCSV(con, t, f);
+        } else if (c == 3) {
+            String t = ConsoleFdB.entreeString("Nom de la table à exporter : ");
+            GestionBdD.exportCSV(con, t);
+        }
+    }
+
+    // =========================================================================
+    // 6. POINT D'ENTRÉE PRINCIPAL (MAIN)
+    // =========================================================================
     public static void main(String[] args) {
+        // Lance l'application
         menuPrincipal();
     }
+
 }

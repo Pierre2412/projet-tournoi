@@ -1,7 +1,8 @@
-ID;SURNOM;CATEGORIE;TAILLECM
-1;Toto;S;180
-2;Titi;J;160
-3;Tutu;NULL;NULL
-4;Toti;NULL;170
-5;Tuti;J;190
-6;Arti;J;180
+ID;SURNOM;CATEGORIE;TAILLECM;ROLE;TOTAL_SCORE
+"1";"Toto";"S";"180";"A";"10"
+"2";"Titi";"J";"160";"U";"10"
+"3";"Tutu";"S";"175";"U";"15"
+"4";"Tata";"J";"165";"U";"15"
+"5";"Tete";"S";"190";"U";"0"
+"21";"A";"S";"1";"U";"0"
+"23";"B";"S";"2";"U";"0"

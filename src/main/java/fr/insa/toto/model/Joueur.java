@@ -25,135 +25,158 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
-/**
- * Classe miroir pour la table joueur.
- * Inspirée de Utilisateur du projet fourni.
- */
 public class Joueur extends ClasseMiroir {
 
-    private String surnom;      // NOT NULL UNIQUE
-    private String categorie;   // CHAR(1), nullable
-    private Integer tailleCm;   // INT, nullable
+    private String surnom;
+    private String categorie;
+    private Integer tailleCm;
+    private String role;
+    private Integer totalScore;
 
-    // Constructeur pour nouvel objet (ID = -1)
     public Joueur(String surnom, String categorie, Integer tailleCm) {
         super();
         this.surnom = surnom;
         this.categorie = categorie;
         this.tailleCm = tailleCm;
+        this.role = "U";
+        this.totalScore = 0;
     }
 
-    // Constructeur pour load depuis BDD (avec ID)
-    public Joueur(int id, String surnom, String categorie, Integer tailleCm) {
+    public Joueur(int id, String surnom, String categorie, Integer tailleCm, String role, Integer totalScore) {
         super(id);
         this.surnom = surnom;
         this.categorie = categorie;
         this.tailleCm = tailleCm;
+        this.role = role;
+        this.totalScore = totalScore;
     }
 
     @Override
     public String toString() {
-        return "Joueur{id=" + this.getId() + ", surnom='" + surnom + "', categorie='" + categorie + "', tailleCm=" + tailleCm + '}';
+        return "Joueur " + getId() + ": " + surnom + " (" + (categorie!=null?categorie:"-") + ") - Score Total: " + totalScore;
     }
 
     @Override
     public Statement saveSansId(Connection con) throws SQLException {
         PreparedStatement insert = con.prepareStatement(
-                "INSERT INTO joueur (SURNOM, CATEGORIE, TAILLECM) VALUES (?, ?, ?)",
+                "INSERT INTO joueur (SURNOM, CATEGORIE, TAILLECM, ROLE, TOTAL_SCORE) VALUES (?, ?, ?, ?, 0)",
                 PreparedStatement.RETURN_GENERATED_KEYS);
-        insert.setString(1, this.getSurnom());
-        insert.setString(2, this.getCategorie());  // Null géré par JDBC
-        if (this.getTailleCm() != null) {
-            insert.setInt(3, this.getTailleCm());
-        } else {
-            insert.setNull(3, java.sql.Types.INTEGER);
-        }
+        insert.setString(1, surnom);
+        insert.setString(2, categorie);
+        if (tailleCm != null) insert.setInt(3, tailleCm); else insert.setNull(3, Types.INTEGER);
+        insert.setString(4, role);
         insert.executeUpdate();
         return insert;
     }
 
-    // Méthode pour UPDATE (gère si ID != -1)
     public void updateInDB(Connection con) throws SQLException {
-        if (this.getId() == -1) {
-            throw new ClasseMiroir.EntiteNonSauvegardee();
-        }
+        if (this.getId() == -1) throw new ClasseMiroir.EntiteNonSauvegardee();
         try (PreparedStatement update = con.prepareStatement(
-                "UPDATE joueur SET SURNOM = ?, CATEGORIE = ?, TAILLECM = ? WHERE ID = ?")) {
-            update.setString(1, this.getSurnom());
-            update.setString(2, this.getCategorie());
-            if (this.getTailleCm() != null) {
-                update.setInt(3, this.getTailleCm());
-            } else {
-                update.setNull(3, java.sql.Types.INTEGER);
-            }
-            update.setInt(4, this.getId());
-            int rows = update.executeUpdate();
-            if (rows == 0) {
-                throw new SQLException("Aucune ligne mise à jour (ID " + this.getId() + " introuvable ?)");
-            }
-            System.out.println("Joueur ID " + this.getId() + " mis à jour (" + rows + " ligne(s)).");
+                "UPDATE joueur SET SURNOM = ?, CATEGORIE = ?, TAILLECM = ?, ROLE = ?, TOTAL_SCORE = ? WHERE ID = ?")) {
+            update.setString(1, surnom);
+            update.setString(2, categorie);
+            if (tailleCm != null) update.setInt(3, tailleCm); else update.setNull(3, Types.INTEGER);
+            update.setString(4, role);
+            update.setInt(5, totalScore != null ? totalScore : 0);
+            update.setInt(6, getId());
+            update.executeUpdate();
         }
     }
 
-    // Méthode statique exemple : Tous les joueurs
+    // NOUVEAU : Recalcule le score total de TOUS les joueurs (Somme des scores des équipes)
+    public static void mettreAJourClassementGeneral(Connection con) throws SQLException {
+        String sql = "UPDATE joueur j SET TOTAL_SCORE = ( " +
+                     "   SELECT COALESCE(SUM(e.SCORE), 0) " +
+                     "   FROM composition c " +
+                     "   JOIN equipe e ON c.IDEQUIPE = e.ID " +
+                     "   WHERE c.IDJOUEUR = j.ID " +
+                     ")";
+        try (PreparedStatement pst = con.prepareStatement(sql)) {
+            int updates = pst.executeUpdate();
+            System.out.println("Classement recalculé pour " + updates + " joueurs.");
+        }
+    }
+
     public static List<Joueur> tousLesJoueurs(Connection con) throws SQLException {
         List<Joueur> res = new ArrayList<>();
-        try (PreparedStatement pst = con.prepareStatement("SELECT ID, SURNOM, CATEGORIE, TAILLECM FROM joueur")) {
+        try (PreparedStatement pst = con.prepareStatement("SELECT * FROM joueur ORDER BY SURNOM")) {
             try (ResultSet rs = pst.executeQuery()) {
                 while (rs.next()) {
-                    res.add(new Joueur(
-                            rs.getInt("ID"),
-                            rs.getString("SURNOM"),
-                            rs.getString("CATEGORIE"),
-                            rs.getObject("TAILLECM") != null ? rs.getInt("TAILLECM") : null
-                    ));
+                    res.add(mapRow(rs));
                 }
             }
         }
         return res;
     }
-
-    // Méthode statique exemple : Find by surnom
+    
     public static Optional<Joueur> findBySurnom(Connection con, String surnom) throws SQLException {
-        try (PreparedStatement pst = con.prepareStatement("SELECT ID, CATEGORIE, TAILLECM FROM joueur WHERE SURNOM = ?")) {
+        try (PreparedStatement pst = con.prepareStatement("SELECT * FROM joueur WHERE SURNOM = ?")) {
             pst.setString(1, surnom);
             try (ResultSet rs = pst.executeQuery()) {
-                if (rs.next()) {
-                    return Optional.of(new Joueur(
-                            rs.getInt("ID"),
-                            surnom,
-                            rs.getString("CATEGORIE"),
-                            rs.getObject("TAILLECM") != null ? rs.getInt("TAILLECM") : null
-                    ));
-                }
-                return Optional.empty();
+                if (rs.next()) return Optional.of(mapRow(rs));
             }
         }
+        return Optional.empty();
+    }
+    
+    // Joueurs pour une équipe donnée
+    public static List<Joueur> joueursPourEquipe(Connection con, int idEquipe) throws SQLException {
+        List<Joueur> res = new ArrayList<>();
+        String sql = "SELECT j.* FROM joueur j JOIN composition c ON j.ID = c.IDJOUEUR WHERE c.IDEQUIPE = ?";
+        try (PreparedStatement pst = con.prepareStatement(sql)) {
+            pst.setInt(1, idEquipe);
+            try (ResultSet rs = pst.executeQuery()) {
+                while(rs.next()) res.add(mapRow(rs));
+            }
+        }
+        return res;
     }
 
-    // Delete exemple (gère dépendances si besoin, ex. composition)
+    private static Joueur mapRow(ResultSet rs) throws SQLException {
+        return new Joueur(
+                rs.getInt("ID"),
+                rs.getString("SURNOM"),
+                rs.getString("CATEGORIE"),
+                rs.getObject("TAILLECM") != null ? rs.getInt("TAILLECM") : null,
+                rs.getString("ROLE"),
+                rs.getInt("TOTAL_SCORE")
+        );
+    }
+
+    // Console Helper
+    public static Joueur entreeConsole() {
+        String nom = ConsoleFdB.entreeString("Surnom : ");
+        String cat = ConsoleFdB.entreeString("Catégorie (J/S...) : ");
+        int taille = ConsoleFdB.entreeInt("Taille (0 si inconnue) : ");
+        return new Joueur(nom, cat.isEmpty() ? null : cat, taille == 0 ? null : taille);
+    }
+    
+    // Ajoutez ceci dans Joueur.java
+    
     public void deleteInDB(Connection con) throws SQLException {
         if (this.getId() == -1) {
             throw new ClasseMiroir.EntiteNonSauvegardee();
         }
         try {
             con.setAutoCommit(false);
-            // Supprime dépendances (ex. composition)
+            // 1. Supprimer les dépendances dans la table composition
             try (PreparedStatement pst = con.prepareStatement("DELETE FROM composition WHERE IDJOUEUR = ?")) {
                 pst.setInt(1, this.getId());
                 pst.executeUpdate();
             }
-            // Supprime le joueur
+            // 2. Supprimer le joueur
             try (PreparedStatement pst = con.prepareStatement("DELETE FROM joueur WHERE ID = ?")) {
                 pst.setInt(1, this.getId());
                 pst.executeUpdate();
             }
             this.entiteSupprimee();
             con.commit();
+            System.out.println("Joueur supprimé.");
         } catch (SQLException ex) {
             con.rollback();
             throw ex;
@@ -162,88 +185,29 @@ public class Joueur extends ClasseMiroir {
         }
     }
     
-    // Recherche joueurs par taille minimale (ex. q5 >160)
-public static List<Joueur> joueursPlusTaille(Connection con, int tailleMin) throws SQLException {
-    List<Joueur> res = new ArrayList<>();
-    try (PreparedStatement pst = con.prepareStatement(
-            "SELECT ID, SURNOM, CATEGORIE, TAILLECM FROM joueur WHERE TAILLECM > ? ORDER BY TAILLECM DESC")) {
-        pst.setInt(1, tailleMin);
-        try (ResultSet rs = pst.executeQuery()) {
-            while (rs.next()) {
-                res.add(new Joueur(rs.getInt("ID"), rs.getString("SURNOM"), rs.getString("CATEGORIE"),
-                        rs.getObject("TAILLECM") != null ? rs.getInt("TAILLECM") : null));
-            }
-        }
-    }
-    return res;
-}
+    // Dans Joueur.java
 
-// Moyenne tailles par catégorie (q11)
-public static List<MoyenneCategorie> moyennesParCategorie(Connection con) throws SQLException {
-    List<MoyenneCategorie> res = new ArrayList<>();
-    try (PreparedStatement pst = con.prepareStatement(
-            "SELECT CATEGORIE, AVG(TAILLECM) AS MOYTAILLE FROM joueur GROUP BY CATEGORIE")) {
-        try (ResultSet rs = pst.executeQuery()) {
-            while (rs.next()) {
-                res.add(new MoyenneCategorie(rs.getString("CATEGORIE"), rs.getDouble("MOYTAILLE")));
-            }
-        }
-    }
-    return res;
-}
-
-// Classe interne pour résultat (ajoute ça dans Joueur)
-public static class MoyenneCategorie {
-    public String categorie;
-    public Double moyenne;
-    public MoyenneCategorie(String cat, Double moy) { this.categorie = cat; this.moyenne = moy; }
-    @Override public String toString() { return categorie + ": " + moyenne; }
-}
-
-// Validation avant insert (ex. surnom unique, taille >0)
-public boolean isValid() {
-    return surnom != null && !surnom.trim().isEmpty() && (tailleCm == null || tailleCm > 0);
-}
-
-// Bulk delete par catégorie (ex. supprimer tous juniors)
-public static void deleteParCategorie(Connection con, String cat) throws SQLException {
-    con.setAutoCommit(false);
-    try {
-        // Supprime compo d'abord
-        try (PreparedStatement pstCompo = con.prepareStatement("DELETE FROM composition WHERE IDJOUEUR IN (SELECT ID FROM joueur WHERE CATEGORIE = ?)")) {
-            pstCompo.setString(1, cat);
-            pstCompo.executeUpdate();
-        }
-        // Supprime joueurs
-        try (PreparedStatement pst = con.prepareStatement("DELETE FROM joueur WHERE CATEGORIE = ?")) {
-            pst.setString(1, cat);
-            int deleted = pst.executeUpdate();
-            System.out.println(deleted + " joueurs supprimés (cat " + cat + ").");
-        }
-        con.commit();
-    } catch (SQLException ex) {
-        con.rollback();
-        throw ex;
-    } finally {
-        con.setAutoCommit(true);
-    }
-}
-
-    // Entrée console exemple (optionnel)
-    public static Joueur entreeConsole() {
-        String nom = ConsoleFdB.entreeString("Surnom : ");
-        String cat = ConsoleFdB.entreeString("Catégorie (J/S ou vide pour null) : ");
-        cat = cat.isEmpty() ? null : cat;
-        Integer taille = ConsoleFdB.entreeInt("Taille cm (0 pour null) : ");
-        taille = (taille == 0) ? null : taille;
-        return new Joueur(nom, cat, taille);
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        Joueur joueur = (Joueur) o;
+        // Deux joueurs sont identiques s'ils ont le même ID
+        return this.getId() == joueur.getId();
     }
 
+    @Override
+    public int hashCode() {
+        return Integer.hashCode(this.getId());
+    }
+    
     // Getters/Setters
     public String getSurnom() { return surnom; }
-    public void setSurnom(String surnom) { this.surnom = surnom; }
     public String getCategorie() { return categorie; }
-    public void setCategorie(String categorie) { this.categorie = categorie; }
     public Integer getTailleCm() { return tailleCm; }
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
+    public Integer getTotalScore() { return totalScore; }
+    public void setTotalScore(Integer totalScore) { this.totalScore = totalScore; }
     public void setTailleCm(Integer tailleCm) { this.tailleCm = tailleCm; }
 }
