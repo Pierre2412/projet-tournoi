@@ -56,7 +56,8 @@ public class GestionBdD {
                         + " CATEGORIE CHAR(1),"
                         + " TAILLECM INT,"
                         + " ROLE CHAR(1) DEFAULT 'U',"
-                        + " TOTAL_SCORE INT DEFAULT 0" 
+                        + " TOTAL_SCORE INT DEFAULT 0," 
+                        + " MOT_DE_PASSE VARCHAR(100)"
                         + ") "
                 );
                 

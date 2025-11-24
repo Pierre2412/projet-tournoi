@@ -37,6 +37,7 @@ public class Joueur extends ClasseMiroir {
     private Integer tailleCm;
     private String role;
     private Integer totalScore;
+    private String motDePasse;
 
     public Joueur(String surnom, String categorie, Integer tailleCm) {
         super();
@@ -64,12 +65,13 @@ public class Joueur extends ClasseMiroir {
     @Override
     public Statement saveSansId(Connection con) throws SQLException {
         PreparedStatement insert = con.prepareStatement(
-                "INSERT INTO joueur (SURNOM, CATEGORIE, TAILLECM, ROLE, TOTAL_SCORE) VALUES (?, ?, ?, ?, 0)",
+                "INSERT INTO joueur (SURNOM, CATEGORIE, TAILLECM, ROLE, TOTAL_SCORE, MOT_DE_PASSE) VALUES (?, ?, ?, ?, 0, ?)",
                 PreparedStatement.RETURN_GENERATED_KEYS);
         insert.setString(1, surnom);
         insert.setString(2, categorie);
         if (tailleCm != null) insert.setInt(3, tailleCm); else insert.setNull(3, Types.INTEGER);
         insert.setString(4, role);
+        insert.setString(5, this.motDePasse);
         insert.executeUpdate();
         return insert;
     }
@@ -77,13 +79,14 @@ public class Joueur extends ClasseMiroir {
     public void updateInDB(Connection con) throws SQLException {
         if (this.getId() == -1) throw new ClasseMiroir.EntiteNonSauvegardee();
         try (PreparedStatement update = con.prepareStatement(
-                "UPDATE joueur SET SURNOM = ?, CATEGORIE = ?, TAILLECM = ?, ROLE = ?, TOTAL_SCORE = ? WHERE ID = ?")) {
+                "UPDATE joueur SET SURNOM = ?, CATEGORIE = ?, TAILLECM = ?, ROLE = ?, TOTAL_SCORE = ?, MOT_DE_PASSE = ? WHERE ID = ?")) {
             update.setString(1, surnom);
             update.setString(2, categorie);
             if (tailleCm != null) update.setInt(3, tailleCm); else update.setNull(3, Types.INTEGER);
             update.setString(4, role);
             update.setInt(5, totalScore != null ? totalScore : 0);
-            update.setInt(6, getId());
+            update.setString(6, this.motDePasse);
+            update.setInt(7, getId());
             update.executeUpdate();
         }
     }
@@ -138,7 +141,7 @@ public class Joueur extends ClasseMiroir {
     }
 
     private static Joueur mapRow(ResultSet rs) throws SQLException {
-        return new Joueur(
+        Joueur j = new Joueur(
                 rs.getInt("ID"),
                 rs.getString("SURNOM"),
                 rs.getString("CATEGORIE"),
@@ -146,6 +149,9 @@ public class Joueur extends ClasseMiroir {
                 rs.getString("ROLE"),
                 rs.getInt("TOTAL_SCORE")
         );
+        // On récupère le mot de passe (peut être null)
+        j.setMotDePasse(rs.getString("MOT_DE_PASSE")); 
+        return j;
     }
 
     // Console Helper
@@ -210,4 +216,6 @@ public class Joueur extends ClasseMiroir {
     public Integer getTotalScore() { return totalScore; }
     public void setTotalScore(Integer totalScore) { this.totalScore = totalScore; }
     public void setTailleCm(Integer tailleCm) { this.tailleCm = tailleCm; }
+    public String getMotDePasse() { return motDePasse; }
+    public void setMotDePasse(String motDePasse) { this.motDePasse = motDePasse; }
 }

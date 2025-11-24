@@ -49,6 +49,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import org.apache.commons.io.IOUtils; // Utile si dispo, sinon on fera en Java pur
+import com.vaadin.flow.component.textfield.PasswordField;
+import com.vaadin.flow.component.checkbox.Checkbox;
+import com.vaadin.flow.component.details.Details;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -92,36 +95,71 @@ public class VuePrincipale extends VerticalLayout {
     // 1. ÉCRAN DE CONNEXION (LOGIN)
     // =========================================================================
     private void showLoginScreen() {
-        removeAll(); // Nettoie l'écran
+    removeAll(); 
 
-        H1 title = new H1("Gestion Tournois 2025");
-        TextField surnomField = new TextField("Votre Surnom");
-        Button loginBtn = new Button("Se connecter");
-        loginBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+    H1 title = new H1("Gestion Tournois 2025");
+    
+    TextField surnomField = new TextField("Votre Surnom");
+    
+    // Nouveau champ Mot de Passe
+    PasswordField passwordField = new PasswordField("Mot de passe");
+    passwordField.setPlaceholder("Requis pour les Admins");
+    passwordField.setHelperText("Laisser vide si vous n'êtes pas admin");
 
-        loginBtn.addClickListener(e -> {
-            String surnom = surnomField.getValue();
-            try {
-                Optional<Joueur> userOpt = Joueur.findBySurnom(con, surnom);
-                if (userOpt.isPresent()) {
-                    this.currentUser = userOpt.get();
-                    Notification.show("Bienvenue " + currentUser.getSurnom());
-                    showMainInterface(); // Passage à l'interface principale
-                } else {
-                    Notification.show("Utilisateur inconnu", 3000, Notification.Position.MIDDLE)
-                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
+    Button loginBtn = new Button("Se connecter");
+    loginBtn.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+    // Permet de valider avec la touche Entrée
+    loginBtn.addClickShortcut(com.vaadin.flow.component.Key.ENTER); 
+
+    loginBtn.addClickListener(e -> {
+        String surnom = surnomField.getValue();
+        String password = passwordField.getValue();
+        
+        try {
+            // 1. On cherche l'utilisateur
+            Optional<Joueur> userOpt = Joueur.findBySurnom(con, surnom);
+            
+            if (userOpt.isPresent()) {
+                Joueur user = userOpt.get();
+                
+                // 2. VERIFICATION SÉCURITÉ
+                if ("A".equals(user.getRole())) {
+                    // Si c'est un Admin, on vérifie le mot de passe
+                    // On compare le mot de passe saisi avec celui en base (Attention aux nulls)
+                    String dbPass = user.getMotDePasse();
+                    
+                    if (dbPass != null && !dbPass.equals(password)) {
+                        Notification.show("Mot de passe Admin incorrect !", 3000, Notification.Position.MIDDLE)
+                                .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                        return; // On arrête tout, pas de connexion
+                    }
+                    
+                    if (dbPass == null) {
+                         // Cas rare : un admin sans mot de passe en base (vieille version)
+                         // On laisse passer ou on bloque, ici on laisse passer avec un warning
+                         Notification.show("Attention : Compte Admin sans sécurité !");
+                    }
                 }
-            } catch (SQLException ex) {
-                Notification.show("Erreur SQL: " + ex.getMessage());
+                
+                // 3. Connexion réussie
+                this.currentUser = user;
+                Notification.show("Bienvenue " + currentUser.getSurnom());
+                showMainInterface(); 
+                
+            } else {
+                Notification.show("Utilisateur inconnu", 3000, Notification.Position.MIDDLE)
+                        .addThemeVariants(NotificationVariant.LUMO_ERROR);
             }
-        });
+        } catch (SQLException ex) {
+            Notification.show("Erreur SQL: " + ex.getMessage());
+        }
+    });
 
-        // Layout centré pour le login
-        VerticalLayout loginLayout = new VerticalLayout(title, surnomField, loginBtn);
-        loginLayout.setAlignItems(Alignment.CENTER);
-        loginLayout.setJustifyContentMode(JustifyContentMode.CENTER);
-        add(loginLayout);
-    }
+    VerticalLayout loginLayout = new VerticalLayout(title, surnomField, passwordField, loginBtn);
+    loginLayout.setAlignItems(Alignment.CENTER);
+    loginLayout.setJustifyContentMode(JustifyContentMode.CENTER);
+    add(loginLayout);
+}
 
     // =========================================================================
     // 2. INTERFACE PRINCIPALE (MENU + CONTENU)
@@ -151,8 +189,9 @@ public class VuePrincipale extends VerticalLayout {
         Button btnClassement = new Button("Classement", e -> showClassementView());
         Button btnJoueurs = new Button("Joueurs", e -> showJoueursView());
         Button btnMatchs = new Button("Matchs & Résultats", e -> showMatchsView());
+        Button btnVueTournoi = new Button("Vue Tournois", e -> showVueGlobaleTournoi());
 
-        navBar.add(btnClassement, btnJoueurs, btnMatchs);
+        navBar.add(btnClassement, btnJoueurs, btnVueTournoi, btnMatchs);
 
         // Boutons ADMIN uniquement
 // Dans showMainInterface() ...
@@ -215,44 +254,91 @@ public class VuePrincipale extends VerticalLayout {
     }
 
     // --- VUE LISTE DES JOUEURS ---
-    private void showJoueursView() {
-        contentArea.removeAll();
-        contentArea.add(new H2("Liste des Joueurs"));
+    // --- VUE LISTE DES JOUEURS ---
+private void showJoueursView() {
+    contentArea.removeAll();
+    contentArea.add(new H2("Liste des Joueurs"));
 
-        try {
-            List<Joueur> liste = Joueur.tousLesJoueurs(con);
-            Grid<Joueur> grid = new Grid<>(Joueur.class, false);
-            grid.addColumn(Joueur::getId).setHeader("ID").setWidth("50px").setFlexGrow(0);
-            grid.addColumn(Joueur::getSurnom).setHeader("Surnom");
-            grid.addColumn(Joueur::getTailleCm).setHeader("Taille (cm)");
-            grid.addColumn(Joueur::getCategorie).setHeader("Catégorie");
+    try {
+        List<Joueur> liste = Joueur.tousLesJoueurs(con);
+        Grid<Joueur> grid = new Grid<>(Joueur.class, false);
+        grid.addColumn(Joueur::getId).setHeader("ID").setWidth("50px").setFlexGrow(0);
+        grid.addColumn(Joueur::getSurnom).setHeader("Surnom");
+        grid.addColumn(Joueur::getTailleCm).setHeader("Taille (cm)");
+        grid.addColumn(Joueur::getCategorie).setHeader("Catégorie");
+        
+        // On affiche le rôle pour vérifier qui est Admin
+        grid.addColumn(j -> "A".equals(j.getRole()) ? "Administrateur" : "Joueur")
+            .setHeader("Rôle");
+
+        // Ajout (Admin seulement)
+        if ("A".equals(currentUser.getRole())) {
+            // Conteneur pour le formulaire d'ajout
+            HorizontalLayout addLayout = new HorizontalLayout();
+            addLayout.setAlignItems(Alignment.BASELINE); // Aligner les champs proprement
             
-            // Ajout simple (Admin seulement)
-            if ("A".equals(currentUser.getRole())) {
-                HorizontalLayout addLayout = new HorizontalLayout();
-                TextField tfNom = new TextField("Surnom");
-                TextField tfCat = new TextField("Cat");
-                IntegerField tfTaille = new IntegerField("Taille");
-                Button btnAdd = new Button("Ajouter", e -> {
-                    try {
-                        new Joueur(tfNom.getValue(), tfCat.getValue(), tfTaille.getValue()).saveInDB(con);
-                        Notification.show("Joueur ajouté !");
-                        showJoueursView(); // Rafraichir
-                    } catch (Exception ex) {
-                        Notification.show("Erreur ajout: " + ex.getMessage());
+            TextField tfNom = new TextField("Surnom");
+            TextField tfCat = new TextField("Catégorie");
+            IntegerField tfTaille = new IntegerField("Taille");
+            
+            // --- NOUVEAUTÉS ---
+            Checkbox cbIsAdmin = new Checkbox("Admin ?");
+            PasswordField tfPass = new PasswordField("Mot de passe");
+            tfPass.setPlaceholder("Requis pour Admin");
+            tfPass.setVisible(false); // Caché par défaut
+            
+            // Logique d'affichage dynamique : Si on coche Admin, on montre le mot de passe
+            cbIsAdmin.addValueChangeListener(e -> {
+                tfPass.setVisible(e.getValue());
+                if (!e.getValue()) {
+                    tfPass.clear(); // On vide si on décoche
+                }
+            });
+            
+            Button btnAdd = new Button("Créer", e -> {
+                try {
+                    // 1. Création de l'objet de base
+                    Joueur nouveauJoueur = new Joueur(tfNom.getValue(), tfCat.getValue(), tfTaille.getValue());
+                    
+                    // 2. Gestion du rôle et mot de passe
+                    if (cbIsAdmin.getValue()) {
+                        nouveauJoueur.setRole("A");
+                        
+                        // Validation : Un admin doit avoir un mot de passe
+                        if (tfPass.isEmpty()) {
+                            Notification.show("Erreur : Un administrateur doit avoir un mot de passe !")
+                                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                            return; // On arrête tout
+                        }
+                        nouveauJoueur.setMotDePasse(tfPass.getValue());
+                    } else {
+                        nouveauJoueur.setRole("U"); // U pour User (Standard)
+                        // Pas de mot de passe pour les joueurs normaux
                     }
-                });
-                addLayout.add(tfNom, tfCat, tfTaille, btnAdd);
-                addLayout.setAlignItems(Alignment.BASELINE);
-                contentArea.add(addLayout);
-            }
-
-            grid.setItems(liste);
-            contentArea.add(grid);
-        } catch (SQLException e) {
-            Notification.show("Erreur: " + e.getMessage());
+                    
+                    // 3. Sauvegarde en BDD
+                    nouveauJoueur.saveInDB(con); 
+                    
+                    Notification.show("Joueur " + nouveauJoueur.getSurnom() + " ajouté avec succès !");
+                    showJoueursView(); // Rafraichir la liste
+                    
+                } catch (Exception ex) {
+                    Notification.show("Erreur ajout: " + ex.getMessage())
+                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
+                }
+            });
+            btnAdd.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+            
+            addLayout.add(tfNom, tfCat, tfTaille, cbIsAdmin, tfPass, btnAdd);
+            contentArea.add(addLayout);
         }
+
+        grid.setItems(liste);
+        contentArea.add(grid);
+    } catch (SQLException e) {
+        Notification.show("Erreur: " + e.getMessage());
     }
+}
 
     // --- VUE MATCHS (Saisie scores) ---
     private void showMatchsView() {
@@ -351,6 +437,9 @@ public class VuePrincipale extends VerticalLayout {
     // =========================================================================
     // VUE ADMIN : PARAMETRES GLOBAUX + CRÉATION RAPIDE TERRAINS
     // =========================================================================
+    // =========================================================================
+    // VUE ADMIN : PARAMETRES GLOBAUX + CRÉATION RAPIDE TERRAINS
+    // =========================================================================
     private void showAdminParamsView() {
         contentArea.removeAll();
         contentArea.add(new H2("Configuration du Tournoi"));
@@ -358,7 +447,11 @@ public class VuePrincipale extends VerticalLayout {
         try {
             // --- PARTIE 1 : PARAMÈTRES GLOBAUX ---
             VerticalLayout paramsLayout = new VerticalLayout();
-            paramsLayout.getStyle().set("border", "1px solid #ddd").set("padding", "20px").set("border-radius", "10px");
+            paramsLayout.getStyle()
+                .set("border", "1px solid #ddd")
+                .set("padding", "20px")
+                .set("border-radius", "10px")
+                .set("background-color", "white");
             
             H3 titleParams = new H3("1. Règles Globales");
             
@@ -368,9 +461,42 @@ public class VuePrincipale extends VerticalLayout {
             nbT.setValue(p.getNbTerrains());
             nbT.setHelperText("Combien de matchs peuvent se jouer en même temps ?");
             
+            // --- NOUVEAUTÉ : SÉLECTEUR DE SPORT ---
+            // On crée une Map pour associer "Nom du sport" -> "Nb Joueurs"
+            java.util.Map<String, Integer> sports = new java.util.LinkedHashMap<>();
+            sports.put("Tennis Simple", 1);
+            sports.put("Tennis Double", 2);
+            sports.put("Padel", 2);
+            sports.put("Badminton Simple", 1);
+            sports.put("Badminton Double", 2);
+            sports.put("Basket 3x3", 3);
+            sports.put("Basket Standard", 5);
+            sports.put("Volley-ball", 6);
+            sports.put("Futsal / Foot à 5", 5);
+            sports.put("Football", 11);
+            sports.put("Rugby à 7", 7);
+            sports.put("Rugby à XV", 15);
+            sports.put("Pétanque (Triplette)", 3);
+
+            ComboBox<String> cbSport = new ComboBox<>("Sélection Rapide (Sport)");
+            cbSport.setItems(sports.keySet());
+            cbSport.setPlaceholder("Choisissez un sport...");
+            cbSport.setHelperText("Remplit automatiquement le nombre de joueurs ci-dessous.");
+            
+            // Le champ numérique classique
             IntegerField nbJ = new IntegerField("Joueurs par Équipe");
             nbJ.setValue(p.getNbJoueursParEquipe());
-            nbJ.setHelperText("Ex: 1 pour Simple, 2 pour Double");
+            nbJ.setHelperText("Vous pouvez modifier cette valeur manuellement.");
+            
+            // LOGIQUE AUTOMATIQUE : Quand on change le sport, on change le nombre
+            cbSport.addValueChangeListener(e -> {
+                if (e.getValue() != null) {
+                    Integer nb = sports.get(e.getValue());
+                    nbJ.setValue(nb);
+                    Notification.show("Règle appliquée : " + nb + " joueurs pour " + e.getValue());
+                }
+            });
+            // ---------------------------------------
             
             Button saveParams = new Button("Sauvegarder les Règles", e -> {
                if (nbT.getValue() == null || nbJ.getValue() == null) return;
@@ -386,18 +512,22 @@ public class VuePrincipale extends VerticalLayout {
             });
             saveParams.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
             
-            paramsLayout.add(titleParams, nbT, nbJ, saveParams);
+            paramsLayout.add(titleParams, nbT, cbSport, nbJ, saveParams); // Ajout de cbSport ici
             
             
             // --- PARTIE 2 : CRÉATION RAPIDE DE TERRAIN ---
             VerticalLayout terrainLayout = new VerticalLayout();
-            terrainLayout.getStyle().set("border", "1px solid #ddd").set("padding", "20px").set("border-radius", "10px");
-            terrainLayout.getStyle().set("margin-top", "20px"); // Espace entre les blocs
+            terrainLayout.getStyle()
+                .set("border", "1px solid #ddd")
+                .set("padding", "20px")
+                .set("border-radius", "10px")
+                .set("margin-top", "20px")
+                .set("background-color", "white");
             
             H3 titleTerrain = new H3("2. Ajouter un Terrain Physique");
             
             HorizontalLayout formTerrain = new HorizontalLayout();
-            formTerrain.setAlignItems(Alignment.BASELINE); // Aligner le bouton avec les champs
+            formTerrain.setAlignItems(Alignment.BASELINE); 
             
             TextField nomTerrain = new TextField("Nom du Terrain");
             nomTerrain.setPlaceholder("Ex: Court Central");
@@ -412,20 +542,16 @@ public class VuePrincipale extends VerticalLayout {
                     return;
                 }
                 try {
-                    // Conversion "Couvert" -> "C", "Ouvert" -> "O"
                     String codeType = typeTerrain.getValue().equals("Couvert") ? "C" : "O";
-                    
                     new Terrain(nomTerrain.getValue(), codeType).saveInDB(con);
                     
                     Notification.show("Terrain '" + nomTerrain.getValue() + "' créé !", 
                             3000, Notification.Position.MIDDLE).addThemeVariants(NotificationVariant.LUMO_SUCCESS);
                     
-                    // Reset du champ pour en ajouter un autre rapidement
                     nomTerrain.clear();
                     nomTerrain.focus();
-                    
                 } catch (Exception ex) {
-                    Notification.show("Erreur (Nom déjà pris ?) : " + ex.getMessage())
+                    Notification.show("Erreur : " + ex.getMessage())
                             .addThemeVariants(NotificationVariant.LUMO_ERROR);
                 }
             });
@@ -433,7 +559,6 @@ public class VuePrincipale extends VerticalLayout {
             formTerrain.add(nomTerrain, typeTerrain, btnAddTerrain);
             terrainLayout.add(titleTerrain, formTerrain);
 
-            // Ajout des deux blocs à la page
             contentArea.add(paramsLayout, terrainLayout);
             
         } catch (SQLException e) {
@@ -678,6 +803,138 @@ public class VuePrincipale extends VerticalLayout {
         return "?";
     }
     
+    private void showVueGlobaleTournoi() {
+        contentArea.removeAll();
+        contentArea.add(new H2("Tableau de bord des Tournois"));
+
+        try {
+            List<Tournoi> tournois = Tournoi.tousLesTournois(con);
+
+            if (tournois.isEmpty()) {
+                contentArea.add(new Span("Aucun tournoi n'a été créé pour le moment."));
+                return;
+            }
+
+            // On boucle sur chaque tournoi pour créer une "Carte" visuelle
+            for (Tournoi t : tournois) {
+                // 1. Conteneur "Carte" (Style CSS Java)
+                VerticalLayout card = new VerticalLayout();
+                card.setWidthFull();
+                card.getStyle()
+                    .set("border", "1px solid #e0e0e0")
+                    .set("border-radius", "8px")
+                    .set("box-shadow", "0 2px 4px rgba(0,0,0,0.1)") // Ombre légère
+                    .set("padding", "20px")
+                    .set("margin-bottom", "20px")
+                    .set("background-color", "white");
+
+                // En-tête du tournoi
+                H3 titreTournoi = new H3(t.getNom());
+                titreTournoi.getStyle().set("margin-top", "0").set("color", "#2c3e50");
+                
+                Span dates = new Span("Dates : " + (t.getDateDebut() != null ? t.getDateDebut() : "?") + 
+                                      " au " + (t.getDateFin() != null ? t.getDateFin() : "?"));
+                dates.getStyle().set("color", "#7f8c8d").set("font-size", "0.9em");
+
+                card.add(titreTournoi, dates);
+
+                // 2. Récupération des Rondes de ce tournoi
+                // (On fait une petite requête SQL directe ici pour filtrer par ID_TOURNOI)
+                List<Ronde> rondes = new ArrayList<>();
+                try (java.sql.PreparedStatement pst = con.prepareStatement(
+                        "SELECT * FROM ronde WHERE ID_TOURNOI = ? ORDER BY NUMERO")) {
+                    pst.setInt(1, t.getId());
+                    java.sql.ResultSet rs = pst.executeQuery();
+                    while(rs.next()) {
+                        rondes.add(new Ronde(rs.getInt("ID"), rs.getInt("NUMERO"), 
+                                             rs.getInt("ID_TOURNOI"), rs.getString("ETAT")));
+                    }
+                }
+
+                if (rondes.isEmpty()) {
+                    card.add(new Span("Aucune ronde générée."));
+                } else {
+                    // Pour chaque ronde, on crée un "Accordéon" (Details)
+                    for (Ronde r : rondes) {
+                        // Résumé visible (Titre de l'accordéon)
+                        String statutEmoji = "ouverte".equals(r.getEtat()) ? "🟢" : 
+                                             "en_cours".equals(r.getEtat()) ? "🔵" : "🔴";
+                        Span summary = new Span(statutEmoji + " Ronde N°" + r.getNumero() + " (" + r.getEtat() + ")");
+                        summary.getStyle().set("font-weight", "bold");
+
+                        // Contenu caché (La grille des matchs)
+                        VerticalLayout contentRonde = new VerticalLayout();
+                        contentRonde.setPadding(false);
+                        
+                        // Récupération des matchs de la ronde
+                        List<Matchs> matchsDeLaRonde = new ArrayList<>();
+                        try (java.sql.PreparedStatement pstM = con.prepareStatement(
+                                "SELECT * FROM matchs WHERE ID_RONDE = ?")) {
+                            pstM.setInt(1, r.getId());
+                            java.sql.ResultSet rsM = pstM.executeQuery();
+                            while(rsM.next()) {
+                                matchsDeLaRonde.add(new Matchs(rsM.getInt("ID"), rsM.getInt("ID_RONDE"), 
+                                                               rsM.getInt("ID_TERRAIN"), rsM.getString("STATUT")));
+                            }
+                        }
+
+                        if (matchsDeLaRonde.isEmpty()) {
+                            contentRonde.add(new Span("Pas de matchs planifiés."));
+                        } else {
+                            // Grille des matchs
+                            Grid<Matchs> gridM = new Grid<>(Matchs.class, false);
+                            gridM.addThemeVariants(com.vaadin.flow.component.grid.GridVariant.LUMO_COMPACT);
+                            gridM.setAllRowsVisible(true); // Évite la barre de scroll interne
+
+                            gridM.addColumn(m -> getTerrainNom(m.getIdTerrain())).setHeader("Terrain").setWidth("150px");
+                            
+                            // Colonne Score (Format : "Eq 1 (12) - (10) Eq 2")
+                            gridM.addColumn(m -> getScoreText(m)).setHeader("Affiche & Score").setAutoWidth(true);
+                            
+                            gridM.addColumn(Matchs::getStatut).setHeader("Statut").setWidth("100px");
+
+                            gridM.setItems(matchsDeLaRonde);
+                            contentRonde.add(gridM);
+                        }
+
+                        // Création du composant Details (Accordéon)
+                        Details detailsRonde = new Details(summary, contentRonde);
+                        detailsRonde.setOpened("en_cours".equals(r.getEtat())); // Ouvre auto si en cours
+                        detailsRonde.setWidthFull();
+                        detailsRonde.getStyle()
+                            .set("border", "1px solid #eee")
+                            .set("margin-top", "5px")
+                            .set("padding", "5px")
+                            .set("border-radius", "5px");
+
+                        card.add(detailsRonde);
+                    }
+                }
+                contentArea.add(card);
+            }
+
+        } catch (SQLException e) {
+            Notification.show("Erreur chargement tournois: " + e.getMessage());
+        }
+    }
+
+    // Petit helper pour formater le texte du match "Equipe X (Score) vs Equipe Y (Score)"
+    private String getScoreText(Matchs m) {
+        try {
+            List<Equipe> eqs = Equipe.equipesPourMatch(con, m.getId());
+            if (eqs.size() >= 2) {
+                Equipe e1 = eqs.get(0);
+                Equipe e2 = eqs.get(1);
+                // Format : "Equipe 1 (12 pts)  ⚡  Equipe 2 (8 pts)"
+                return "Éq." + e1.getNum() + " (" + e1.getScore() + ")  vs  " + 
+                       "Éq." + e2.getNum() + " (" + e2.getScore() + ")";
+            }
+            return "En attente d'équipes...";
+        } catch (Exception e) {
+            return "Erreur lecture";
+        }
+    }
+    
     private void openManualMatchCreationDialog(int idRonde) {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Création de Match Manuel");
@@ -685,109 +942,156 @@ public class VuePrincipale extends VerticalLayout {
 
         VerticalLayout mainLayout = new VerticalLayout();
 
-        try {
-            // 1. Paramètres et Terrain
-            Parametres params = Parametres.load(con);
-            int maxJoueurs = params.getNbJoueursParEquipe();
+        // 1. Déclaration des composants (vides pour l'instant)
+        ComboBox<Terrain> cbTerrain = new ComboBox<>("Terrain (Libres)");
+        cbTerrain.setItemLabelGenerator(Terrain::getNom);
+        cbTerrain.setWidth("50%");
 
-            List<Terrain> terrainsLibres = Terrain.terrainsDisponibles(con);
-            ComboBox<Terrain> cbTerrain = new ComboBox<>("Terrain (Uniquement les libres)");
-            cbTerrain.setItems(terrainsLibres);
-            cbTerrain.setItemLabelGenerator(Terrain::getNom);
-            if (terrainsLibres.isEmpty()) Notification.show("Attention : Plus de terrain libre !");
+        // Les listes de sélection de joueurs
+        MultiSelectComboBox<Joueur> mainEq1 = new MultiSelectComboBox<>("Équipe 1 - Titulaires");
+        MultiSelectComboBox<Joueur> subEq1 = new MultiSelectComboBox<>("Remplaçants Eq 1");
+        MultiSelectComboBox<Joueur> mainEq2 = new MultiSelectComboBox<>("Équipe 2 - Titulaires");
+        MultiSelectComboBox<Joueur> subEq2 = new MultiSelectComboBox<>("Remplaçants Eq 2");
 
-            List<Joueur> allPlayers = Joueur.tousLesJoueurs(con);
+        // Configuration affichage
+        mainEq1.setItemLabelGenerator(Joueur::getSurnom); subEq1.setItemLabelGenerator(Joueur::getSurnom);
+        mainEq2.setItemLabelGenerator(Joueur::getSurnom); subEq2.setItemLabelGenerator(Joueur::getSurnom);
+        mainEq1.setWidthFull(); subEq1.setWidthFull(); mainEq2.setWidthFull(); subEq2.setWidthFull();
 
-            // 2. Création des listes (On met TOUS les joueurs partout au début)
-            MultiSelectComboBox<Joueur> mainEq1 = new MultiSelectComboBox<>("Équipe 1 - Titulaires (Max " + maxJoueurs + ")");
-            mainEq1.setItemLabelGenerator(Joueur::getSurnom);
-            mainEq1.setWidthFull();
-            mainEq1.setItems(allPlayers);
+        // --- LOGIQUE INTELLIGENTE DE RAFRAÎCHISSEMENT ---
+        // Cette fonction (Runnable) sera appelée à l'ouverture ET après chaque création de match
+        Runnable refreshData = () -> {
+            try {
+                // A. Mise à jour des Terrains (On ne veut que les libres)
+                List<Terrain> terrainsLibres = Terrain.terrainsDisponibles(con);
+                cbTerrain.setItems(terrainsLibres);
+                cbTerrain.clear(); // On décoche
+                if (terrainsLibres.isEmpty()) cbTerrain.setHelperText("⚠️ Aucun terrain disponible !");
+                else cbTerrain.setHelperText(terrainsLibres.size() + " terrains libres.");
 
-            MultiSelectComboBox<Joueur> subEq1 = new MultiSelectComboBox<>("Équipe 1 - Remplaçants");
-            subEq1.setItemLabelGenerator(Joueur::getSurnom);
-            subEq1.setWidthFull();
-            subEq1.setItems(allPlayers);
-
-            MultiSelectComboBox<Joueur> mainEq2 = new MultiSelectComboBox<>("Équipe 2 - Titulaires (Max " + maxJoueurs + ")");
-            mainEq2.setItemLabelGenerator(Joueur::getSurnom);
-            mainEq2.setWidthFull();
-            mainEq2.setItems(allPlayers);
-
-            MultiSelectComboBox<Joueur> subEq2 = new MultiSelectComboBox<>("Équipe 2 - Remplaçants");
-            subEq2.setItemLabelGenerator(Joueur::getSurnom);
-            subEq2.setWidthFull();
-            subEq2.setItems(allPlayers);
-
-            // 3. LOGIQUE DE VALIDATION ROBUSTE (Anti-Bug)
-            // Au lieu de modifier les items, on vérifie juste si le joueur est dispo
-            HasValue.ValueChangeListener<AbstractField.ComponentValueChangeEvent<MultiSelectComboBox<Joueur>, Set<Joueur>>> validationListener = event -> {
-                if (!event.isFromClient()) return; // Ignore les changements faits par le code
-
-                MultiSelectComboBox<Joueur> source = event.getSource();
-                Set<Joueur> newSelection = event.getValue();
-
-                // A. Vérification Limite (Max Titulaires)
-                if ((source == mainEq1 || source == mainEq2) && newSelection.size() > maxJoueurs) {
-                    source.setValue(event.getOldValue()); // Annule l'action
-                    Notification.show("Limite atteinte ! Max " + maxJoueurs + " titulaires.")
-                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
-                    return;
+                // B. Mise à jour des Joueurs (Exclure ceux DÉJÀ dans cette ronde)
+                // 1. On trouve les IDs des joueurs déjà occupés dans la ronde actuelle
+                List<Integer> idsOccupes = new ArrayList<>();
+                String sqlCheck = "SELECT c.IDJOUEUR FROM composition c " +
+                                  "JOIN equipe e ON c.IDEQUIPE = e.ID " +
+                                  "JOIN matchs m ON e.IDMATCH = m.ID " +
+                                  "WHERE m.ID_RONDE = ?"; // Filtre par la ronde en cours
+                
+                try (java.sql.PreparedStatement pst = con.prepareStatement(sqlCheck)) {
+                    pst.setInt(1, idRonde);
+                    java.sql.ResultSet rs = pst.executeQuery();
+                    while(rs.next()) idsOccupes.add(rs.getInt(1));
                 }
 
-                // B. Vérification Doublons (Est-ce que le joueur est déjà ailleurs ?)
-                // On récupère les joueurs sélectionnés dans les 3 AUTRES listes
-                List<Joueur> others = new ArrayList<>();
-                if (source != mainEq1) others.addAll(mainEq1.getValue());
-                if (source != subEq1)  others.addAll(subEq1.getValue());
-                if (source != mainEq2) others.addAll(mainEq2.getValue());
-                if (source != subEq2)  others.addAll(subEq2.getValue());
-
-                // On cherche s'il y a une intersection entre la "Nouvelle Sélection" et "Les Autres"
-                for (Joueur j : newSelection) {
-                    if (others.contains(j)) {
-                        // ERREUR : Le joueur est déjà pris !
-                        source.setValue(event.getOldValue()); // On annule tout de suite
-                        Notification.show(j.getSurnom() + " est déjà placé dans une autre liste !", 
-                                3000, Notification.Position.MIDDLE).addThemeVariants(NotificationVariant.LUMO_ERROR);
-                        return;
+                // 2. On filtre la liste complète
+                List<Joueur> tous = Joueur.tousLesJoueurs(con);
+                List<Joueur> dispos = new ArrayList<>();
+                for (Joueur j : tous) {
+                    if (!idsOccupes.contains(j.getId())) {
+                        dispos.add(j);
                     }
                 }
-            };
 
-            // 4. Attachement des listeners
-            mainEq1.addValueChangeListener(validationListener);
-            subEq1.addValueChangeListener(validationListener);
-            mainEq2.addValueChangeListener(validationListener);
-            subEq2.addValueChangeListener(validationListener);
+                // 3. On met à jour les listes déroulantes
+                mainEq1.setItems(dispos); subEq1.setItems(dispos);
+                mainEq2.setItems(dispos); subEq2.setItems(dispos);
+                
+                // On vide les sélections précédentes
+                mainEq1.clear(); subEq1.clear(); mainEq2.clear(); subEq2.clear();
 
-            // 5. Mise en page
-            HorizontalLayout row1 = new HorizontalLayout(mainEq1, subEq1); row1.setWidthFull();
-            HorizontalLayout row2 = new HorizontalLayout(mainEq2, subEq2); row2.setWidthFull();
+            } catch (SQLException ex) {
+                Notification.show("Erreur rechargement données: " + ex.getMessage());
+            }
+        };
 
-            Button btnSave = new Button("Valider le Match", e -> {
-                if (cbTerrain.getValue() == null) { Notification.show("Sélectionnez un terrain."); return; }
-                if (mainEq1.getValue().isEmpty() || mainEq2.getValue().isEmpty()) { Notification.show("Les équipes titulaires sont vides !"); return; }
+        // Appel initial pour remplir les listes
+        refreshData.run();
 
-                try {
-                    List<Joueur> totalEq1 = new ArrayList<>(mainEq1.getValue());
-                    totalEq1.addAll(subEq1.getValue());
-                    List<Joueur> totalEq2 = new ArrayList<>(mainEq2.getValue());
-                    totalEq2.addAll(subEq2.getValue());
+        // --- VALIDATION CROISÉE (Ton code existant pour éviter doublons Eq1 vs Eq2) ---
+        HasValue.ValueChangeListener<AbstractField.ComponentValueChangeEvent<MultiSelectComboBox<Joueur>, Set<Joueur>>> validationListener = event -> {
+            if (!event.isFromClient()) return;
+            MultiSelectComboBox<Joueur> source = event.getSource();
+            Set<Joueur> selection = event.getValue();
+            
+            // Paramètres globaux pour limite joueurs
+            int maxJ = 2; // Valeur par défaut de sécurité
+            try { maxJ = Parametres.load(con).getNbJoueursParEquipe(); } catch(Exception e){}
 
-                    ServiceTournoi.creerMatchManuel(con, idRonde, cbTerrain.getValue().getId(), totalEq1, totalEq2);
-                    Notification.show("Match créé avec succès !");
-                    dialog.close();
-                } catch (Exception ex) { Notification.show("Erreur: " + ex.getMessage()); }
-            });
-            btnSave.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+            // Vérif limite taille
+            if ((source == mainEq1 || source == mainEq2) && selection.size() > maxJ) {
+                source.setValue(event.getOldValue());
+                Notification.show("Max " + maxJ + " titulaires !");
+                return;
+            }
+            
+            // Vérif doublons entre les listes
+            List<Joueur> autres = new ArrayList<>();
+            if (source != mainEq1) autres.addAll(mainEq1.getValue());
+            if (source != subEq1)  autres.addAll(subEq1.getValue());
+            if (source != mainEq2) autres.addAll(mainEq2.getValue());
+            if (source != subEq2)  autres.addAll(subEq2.getValue());
 
-            mainLayout.add(cbTerrain, new H3("Équipe 1"), row1, new H3("Équipe 2"), row2, btnSave);
-            dialog.add(mainLayout);
-            dialog.open();
+            for (Joueur j : selection) {
+                if (autres.contains(j)) {
+                    source.setValue(event.getOldValue());
+                    Notification.show(j.getSurnom() + " est déjà sélectionné ailleurs !");
+                    return;
+                }
+            }
+        };
 
-        } catch (SQLException ex) {
-            Notification.show("Erreur BDD: " + ex.getMessage());
+        mainEq1.addValueChangeListener(validationListener); subEq1.addValueChangeListener(validationListener);
+        mainEq2.addValueChangeListener(validationListener); subEq2.addValueChangeListener(validationListener);
+
+        // --- LES BOUTONS ---
+        HorizontalLayout buttonsLayout = new HorizontalLayout();
+        
+        // Bouton 1 : Classique
+        Button btnSaveClose = new Button("Valider & Fermer", e -> {
+            if (saveMatchHelper(idRonde, cbTerrain, mainEq1, subEq1, mainEq2, subEq2)) {
+                dialog.close();
+            }
+        });
+        btnSaveClose.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+
+        // Bouton 2 : NOUVEAU
+        Button btnSaveContinue = new Button("Valider & Créer un autre", e -> {
+            if (saveMatchHelper(idRonde, cbTerrain, mainEq1, subEq1, mainEq2, subEq2)) {
+                Notification.show("✅ Match créé ! Prêt pour le suivant...", 3000, Notification.Position.MIDDLE);
+                // C'est ici la magie : on recharge tout sans fermer
+                refreshData.run(); 
+            }
+        });
+        btnSaveContinue.addThemeVariants(ButtonVariant.LUMO_CONTRAST); // Couleur différente
+
+        buttonsLayout.add(btnSaveClose, btnSaveContinue);
+
+        // Mise en page
+        HorizontalLayout row1 = new HorizontalLayout(mainEq1, subEq1); row1.setWidthFull();
+        HorizontalLayout row2 = new HorizontalLayout(mainEq2, subEq2); row2.setWidthFull();
+
+        mainLayout.add(cbTerrain, new H3("Équipe 1"), row1, new H3("Équipe 2"), row2, buttonsLayout);
+        dialog.add(mainLayout);
+        dialog.open();
+    }
+
+    // Petite méthode aide pour éviter de copier-coller la logique de sauvegarde
+    private boolean saveMatchHelper(int idRonde, ComboBox<Terrain> cb, 
+                                    MultiSelectComboBox<Joueur> m1, MultiSelectComboBox<Joueur> s1,
+                                    MultiSelectComboBox<Joueur> m2, MultiSelectComboBox<Joueur> s2) {
+        if (cb.getValue() == null) { Notification.show("Choisissez un terrain !"); return false; }
+        if (m1.getValue().isEmpty() || m2.getValue().isEmpty()) { Notification.show("Équipes vides !"); return false; }
+
+        try {
+            List<Joueur> eq1 = new ArrayList<>(m1.getValue()); eq1.addAll(s1.getValue());
+            List<Joueur> eq2 = new ArrayList<>(m2.getValue()); eq2.addAll(s2.getValue());
+            
+            // Sauvegarde BDD
+            ServiceTournoi.creerMatchManuel(con, idRonde, cb.getValue().getId(), eq1, eq2);
+            return true;
+        } catch (Exception ex) {
+            Notification.show("Erreur: " + ex.getMessage());
+            return false;
         }
     }
 

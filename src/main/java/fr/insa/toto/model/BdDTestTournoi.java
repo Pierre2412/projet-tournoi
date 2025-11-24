@@ -36,6 +36,7 @@ public class BdDTestTournoi {
         // ID 1 : Toto (Admin) - Indispensable pour se connecter en Admin
         Joueur j1 = new Joueur("Toto", "S", 180);
         j1.setRole("A"); // Admin
+        j1.setMotDePasse("admin");
         j1.saveInDB(con);
 
         // ID 2 à 5 : Autres joueurs (Utilisateurs standard)
