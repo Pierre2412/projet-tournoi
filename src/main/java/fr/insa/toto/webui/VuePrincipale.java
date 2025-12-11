@@ -377,60 +377,92 @@ private void showJoueursView() {
     }
     
     // --- VUE ADMIN : CRÉATION TOURNOI/RONDE ---
+    // --- VUE ADMIN : GESTION TOURNOIS ---
     private void showAdminTournoisView() {
         contentArea.removeAll();
         contentArea.add(new H2("Gestion Tournois & Matchs"));
         
-        // --- PARTIE 1 : CRÉATION TOURNOI ---
-        HorizontalLayout layoutTournoi = new HorizontalLayout();
-        TextField nomTournoi = new TextField("Nom du nouveau Tournoi");
-        Button btnCreateT = new Button("Créer Tournoi", e -> {
-            try {
-                new Tournoi(nomTournoi.getValue(), null, null).saveInDB(con);
-                Notification.show("Tournoi créé.");
-            } catch (Exception ex) { Notification.show("Erreur: " + ex.getMessage()); }
-        });
-        layoutTournoi.add(nomTournoi, btnCreateT);
-        layoutTournoi.setAlignItems(Alignment.BASELINE);
+        // =========================================================
+        // BLOC 1 : CRÉATION EXPRESS (AUTOMATIQUE)
+        // =========================================================
+        VerticalLayout autoLayout = new VerticalLayout();
+        autoLayout.getStyle().set("border", "1px solid #2ecc71").set("padding", "20px").set("border-radius", "8px").set("background-color", "#f0fff4");
         
-        // --- PARTIE 2 : GESTION DES RONDES ET MATCHS ---
-        VerticalLayout layoutRonde = new VerticalLayout();
-        layoutRonde.getStyle().set("border", "1px solid #ddd").set("padding", "10px");
+        H3 titleAuto = new H3("🚀 Création Automatique de Tournoi");
         
-        H3 titleRonde = new H3("Ajouter une Ronde & ses Matchs");
+        TextField tfNomAuto = new TextField("Nom du Tournoi");
+        tfNomAuto.setPlaceholder("Ex: Tournoi d'Été");
         
-        ComboBox<Tournoi> cbTournoi = new ComboBox<>("1. Choisir Tournoi");
-        try { cbTournoi.setItems(Tournoi.tousLesTournois(con)); } catch(Exception ex){}
-        cbTournoi.setItemLabelGenerator(Tournoi::getNom);
+        // Sélecteur de sport (Copie de la logique Paramètres)
+        java.util.Map<String, Integer> sports = new java.util.LinkedHashMap<>();
+        sports.put("Tennis Simple", 1); sports.put("Tennis Double", 2); sports.put("Padel", 2);
+        sports.put("Badminton Simple", 1); sports.put("Badminton Double", 2);
+        sports.put("Basket 3x3", 3); sports.put("Football", 11); sports.put("Futsal", 5);
         
-        IntegerField numRonde = new IntegerField("2. Numéro Ronde");
+        ComboBox<String> cbSport = new ComboBox<>("Sport (Définit la taille des équipes)");
+        cbSport.setItems(sports.keySet());
+        cbSport.setValue("Tennis Simple"); // Valeur par défaut
         
-        // Bouton pour créer la ronde vide
-        Button btnCreerRonde = new Button("Créer la Ronde", e -> {
-            if(cbTournoi.getValue() == null || numRonde.getValue() == null) {
-                Notification.show("Sélectionnez un tournoi et un numéro.");
+        Button btnAuto = new Button("Générer Tournoi + Ronde 1 + Matchs", e -> {
+            if (tfNomAuto.isEmpty() || cbSport.getValue() == null) {
+                Notification.show("Veuillez remplir le nom et le sport.");
                 return;
             }
             try {
+                // 1. Mise à jour des Paramètres globaux selon le sport choisi
+                Parametres p = Parametres.load(con);
+                p.setNbJoueursParEquipe(sports.get(cbSport.getValue()));
+                p.save(con);
+                
+                // 2. Création du Tournoi
+                Tournoi t = new Tournoi(tfNomAuto.getValue(), null, null);
+                t.saveInDB(con);
+                
+                // 3. Création de la Ronde 1
+                Ronde r1 = new Ronde(1, t.getId());
+                r1.saveInDB(con);
+                
+                // 4. Génération Aléatoire des Matchs (utilise ServiceTournoi)
+                ServiceTournoi.creerRondeAleatoire(con, r1.getId());
+                
+                Notification.show("✅ Tournoi '" + t.getNom() + "' généré avec succès !");
+                tfNomAuto.clear();
+                
+            } catch (Exception ex) {
+                Notification.show("Erreur génération: " + ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+            }
+        });
+        btnAuto.addThemeVariants(ButtonVariant.LUMO_PRIMARY, ButtonVariant.LUMO_SUCCESS);
+        
+        autoLayout.add(titleAuto, tfNomAuto, cbSport, btnAuto);
+
+
+        // =========================================================
+        // BLOC 2 : GESTION MANUELLE (Ton ancien code, simplifié)
+        // =========================================================
+        VerticalLayout manualLayout = new VerticalLayout();
+        manualLayout.getStyle().set("border", "1px solid #ddd").set("padding", "20px").set("margin-top", "20px");
+        H3 titleManual = new H3("🛠️ Gestion Manuelle des Rondes");
+        
+        ComboBox<Tournoi> cbTournoi = new ComboBox<>("Choisir Tournoi");
+        try { cbTournoi.setItems(Tournoi.tousLesTournois(con)); } catch(Exception ex){}
+        cbTournoi.setItemLabelGenerator(Tournoi::getNom);
+        
+        IntegerField numRonde = new IntegerField("Numéro Ronde");
+        
+        Button btnCreerRonde = new Button("Créer Ronde Vide (puis ajouter matchs)", e -> {
+            if(cbTournoi.getValue() == null || numRonde.getValue() == null) return;
+            try {
                 Ronde r = new Ronde(numRonde.getValue(), cbTournoi.getValue().getId());
                 r.saveInDB(con);
-                Notification.show("Ronde " + r.getNumero() + " initialisée. Ajoutez maintenant les matchs !");
-                // On ouvre directement le dialogue de création de match pour cette ronde
+                Notification.show("Ronde créée. Ouverture de l'éditeur...");
                 openManualMatchCreationDialog(r.getId());
             } catch (Exception ex) { Notification.show("Erreur: " + ex.getMessage()); }
         });
         
-        // Bouton pour ajouter des matchs à une ronde existante (si on revient plus tard)
-        Button btnAjoutMatch = new Button("Ajouter Matchs à une ronde existante", e -> {
-             // Pour simplifier ici, on demande à l'utilisateur de saisir l'ID de la ronde, 
-             // ou on pourrait faire un selecteur de ronde. 
-             // Pour l'instant, on suppose qu'il vient de créer la ronde ci-dessus.
-             Notification.show("Utilisez le bouton 'Créer la Ronde' pour démarrer une session.");
-        });
-
-        layoutRonde.add(titleRonde, cbTournoi, numRonde, btnCreerRonde);
+        manualLayout.add(titleManual, cbTournoi, numRonde, btnCreerRonde);
         
-        contentArea.add(layoutTournoi, layoutRonde);
+        contentArea.add(autoLayout, manualLayout);
     }
     
     // --- VUE ADMIN : PARAMETRES ---
@@ -675,110 +707,125 @@ private void showJoueursView() {
     // =========================================================================
 
     // Ouvre une fenêtre modale pour saisir les scores d'un match
+    // Ouvre une fenêtre modale pour saisir les scores d'un match
     private void openScoreDialog(Matchs m) {
         Dialog dialog = new Dialog();
         dialog.setHeaderTitle("Arbitrage - Match " + m.getId());
         dialog.setWidth("800px");
 
-        HorizontalLayout mainLayout = new HorizontalLayout();
-        mainLayout.setSizeFull();
-        mainLayout.setJustifyContentMode(JustifyContentMode.EVENLY);
+        VerticalLayout mainWrapper = new VerticalLayout();
+        HorizontalLayout teamsLayout = new HorizontalLayout();
+        teamsLayout.setSizeFull();
+        teamsLayout.setJustifyContentMode(JustifyContentMode.EVENLY);
+
+        // Listes pour stocker les références et pouvoir mettre à jour l'affichage
+        List<Span> scoreLabels = new ArrayList<>();
+        List<Equipe> equipesDuMatch = new ArrayList<>();
 
         try {
-            List<Equipe> equipes = Equipe.equipesPourMatch(con, m.getId());
-            if (equipes.size() < 2) {
-                Notification.show("Erreur : Données équipes invalides");
+            equipesDuMatch = Equipe.equipesPourMatch(con, m.getId());
+            if (equipesDuMatch.size() < 2) {
+                Notification.show("Erreur : Match incomplet (pas assez d'équipes)");
                 return;
             }
 
-            // On boucle sur les 2 équipes pour créer deux colonnes visuelles
-            for (Equipe equipe : equipes) {
+            // --- CONSTRUCTION DE L'AFFICHAGE DES ÉQUIPES ---
+            for (Equipe equipe : equipesDuMatch) {
                 VerticalLayout teamLayout = new VerticalLayout();
                 teamLayout.setAlignItems(Alignment.CENTER);
+                teamLayout.getStyle().set("border", "1px solid #eee").set("padding", "10px").set("border-radius", "5px");
                 
-                // 1. En-tête de l'équipe (Numéro + Score actuel)
-                // On utilise un Span pour pouvoir mettre à jour le texte du score dynamiquement
                 Span scoreLabel = new Span("Score: " + equipe.getScore());
-                scoreLabel.getStyle().set("font-weight", "bold").set("font-size", "1.2em");
+                scoreLabel.getStyle().set("font-weight", "bold").set("font-size", "1.5em").set("color", "#2c3e50");
+                scoreLabels.add(scoreLabel); // On garde une référence pour update
                 
                 H3 title = new H3("Équipe " + equipe.getNum());
                 teamLayout.add(title, scoreLabel);
                 
-                // 2. Liste des joueurs de cette équipe
-                List<Joueur> joueurs = equipe.getJoueurs(con); // Utilise la méthode corrigée d'Equipe
-                
+                List<Joueur> joueurs = equipe.getJoueurs(con);
                 for (Joueur joueur : joueurs) {
-                    // Bouton pour chaque joueur
+                    // Bouton +1 existant
                     Button btnMarquer = new Button(joueur.getSurnom() + " (+1)", e -> {
                         try {
-                            // A. Mise à jour Equipe (+1)
-                            int newScoreEq = equipe.getScore() + 1;
-                            equipe.setScore(newScoreEq);
-                            equipe.updateInDB(con);
-                            
-                            // B. Mise à jour Joueur (+1 au total score global)
-                            int newScoreJoueur = joueur.getTotalScore() + 1;
-                            joueur.setTotalScore(newScoreJoueur);
-                            joueur.updateInDB(con);
-                            
-                            // C. Mise à jour Visuelle
-                            scoreLabel.setText("Score: " + newScoreEq);
-                            Notification.show("But pour " + joueur.getSurnom() + " !");
-                            
-                        } catch (SQLException ex) {
-                            Notification.show("Erreur BDD: " + ex.getMessage());
-                        }
+                            int newS = equipe.getScore() + 1;
+                            equipe.setScore(newS); equipe.updateInDB(con);
+                            joueur.setTotalScore(joueur.getTotalScore() + 1); joueur.updateInDB(con);
+                            scoreLabel.setText("Score: " + newS);
+                        } catch (Exception ex) { Notification.show("Erreur: " + ex.getMessage()); }
                     });
-                    
-                    // Style du bouton
-                    btnMarquer.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-                    btnMarquer.setWidthFull();
+                    btnMarquer.addThemeVariants(ButtonVariant.LUMO_SMALL);
                     teamLayout.add(btnMarquer);
                 }
-                
-                // Ajout de la colonne au layout principal
-                mainLayout.add(teamLayout);
+                teamsLayout.add(teamLayout);
             }
+            
+            // --- BOUTON SCORE ALÉATOIRE ---
+            // On doit copier la liste pour l'utiliser dans le lambda (final effective)
+            List<Equipe> finalEquipes = equipesDuMatch; 
+            
+            Button btnRandom = new Button("🎲 Générer Score Aléatoire (0-5)", e -> {
+                try {
+                    for (int i = 0; i < finalEquipes.size(); i++) {
+                        Equipe eq = finalEquipes.get(i);
+                        
+                        // 1. Génération score (0 à 5)
+                        int randomScore = (int)(Math.random() * 6);
+                        
+                        // 2. Calcul du delta pour mettre à jour les joueurs
+                        // (Si score passe de 2 à 5, on ajoute 3 pts à chaque joueur)
+                        int delta = randomScore - eq.getScore();
+                        
+                        // 3. Update Equipe
+                        eq.setScore(randomScore);
+                        eq.updateInDB(con);
+                        
+                        // 4. Update Joueurs (Important pour le classement)
+                        for (Joueur j : eq.getJoueurs(con)) {
+                            j.setTotalScore(j.getTotalScore() + delta);
+                            j.updateInDB(con);
+                        }
+                        
+                        // 5. Update Affichage
+                        if (i < scoreLabels.size()) {
+                            scoreLabels.get(i).setText("Score: " + randomScore);
+                        }
+                    }
+                    Notification.show("Scores aléatoires appliqués !");
+                } catch (Exception ex) {
+                    Notification.show("Erreur: " + ex.getMessage());
+                }
+            });
+            btnRandom.getStyle().set("margin-top", "20px").set("background-color", "#f1c40f").set("color", "black");
 
-            dialog.add(mainLayout);
 
-            // --- PIED DE PAGE (BOUTON FINIR) ---
+            // --- BOUTON CLÔTURE (Ton code existant) ---
             Button btnClore = new Button("Siffler la fin du match (Clore)", e -> {
                 try {
-                    // On passe le match à "clos"
                     m.setStatut("clos");
                     m.updateInDB(con);
-                    
-                    // On recalcule le classement général par sécurité
                     Joueur.mettreAJourClassementGeneral(con);
                     
-                    // Vérification fin de ronde
                     if (Ronde.tousMatchsRondeClos(con, m.getIdRonde())) {
                          new Ronde(m.getIdRonde(), 0, 0, "").setEtat(con, "close");
-                         Notification.show("Match terminé et Ronde CLÔTURÉE !", 5000, Notification.Position.MIDDLE);
+                         Notification.show("🏆 Ronde terminée !");
                     } else {
                         Notification.show("Match terminé.");
                     }
-                    
                     dialog.close();
-                    showMatchsView(); // Rafraichir la liste des matchs
-                } catch (Exception ex) {
-                    Notification.show("Erreur Clôture: " + ex.getMessage());
-                }
+                    showMatchsView(); 
+                } catch (Exception ex) { Notification.show("Erreur: " + ex.getMessage()); }
             });
-            btnClore.addThemeVariants(ButtonVariant.LUMO_ERROR); // Rouge pour marquer l'importance
-            btnClore.getStyle().set("margin-top", "20px");
+            btnClore.addThemeVariants(ButtonVariant.LUMO_ERROR);
+
+            // Assemblage
+            mainWrapper.add(teamsLayout, btnRandom, btnClore);
+            mainWrapper.setAlignItems(Alignment.CENTER);
             
-            // Centre le bouton fermer
-            HorizontalLayout footer = new HorizontalLayout(btnClore);
-            footer.setJustifyContentMode(JustifyContentMode.CENTER);
-            footer.setWidthFull();
-            
-            dialog.add(footer);
+            dialog.add(mainWrapper);
             dialog.open();
 
         } catch (SQLException e) {
-            Notification.show("Erreur chargement match: " + e.getMessage());
+            Notification.show("Erreur chargement: " + e.getMessage());
         }
     }
 
