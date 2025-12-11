@@ -257,59 +257,76 @@ public class VuePrincipale extends VerticalLayout {
     // --- VUE LISTE DES JOUEURS ---
     // --- VUE LISTE DES JOUEURS ---
 // --- VUE LISTE DES JOUEURS ---
+    // --- VUE LISTE DES JOUEURS (COMPLÈTE : Recherche + Création + Détails) ---
     private void showJoueursView() {
         contentArea.removeAll();
-        contentArea.add(new H2("Liste des Joueurs"));
+        contentArea.add(new H2("Annuaire des Joueurs"));
 
         try {
-            List<Joueur> liste = Joueur.tousLesJoueurs(con);
-            Grid<Joueur> grid = new Grid<>(Joueur.class, false);
-            grid.addColumn(Joueur::getId).setHeader("ID").setWidth("50px").setFlexGrow(0);
-            grid.addColumn(Joueur::getSurnom).setHeader("Surnom");
-            grid.addColumn(Joueur::getTailleCm).setHeader("Taille (cm)");
-            grid.addColumn(Joueur::getCategorie).setHeader("Catégorie");
+            // 1. Récupération des données
+            List<Joueur> tousLesJoueurs = Joueur.tousLesJoueurs(con);
             
-            grid.addColumn(j -> "A".equals(j.getRole()) ? "Administrateur" : "Joueur")
-                .setHeader("Rôle");
+            // 2. Barre de Recherche (Toujours visible)
+            TextField searchField = new TextField();
+            searchField.setPlaceholder("Rechercher par nom...");
+            searchField.setPrefixComponent(new Span("🔍"));
+            searchField.setWidth("300px");
+            
+            // 3. Configuration de la Grille
+            Grid<Joueur> grid = new Grid<>(Joueur.class, false);
+            grid.addColumn(Joueur::getId).setHeader("ID").setWidth("60px").setFlexGrow(0);
+            grid.addColumn(Joueur::getSurnom).setHeader("Surnom").setSortable(true);
+            grid.addColumn(Joueur::getCategorie).setHeader("Cat").setWidth("80px").setFlexGrow(0);
+            grid.addColumn(Joueur::getTotalScore).setHeader("Score Total").setSortable(true);
+            grid.addColumn(j -> "A".equals(j.getRole()) ? "Admin" : "Joueur").setHeader("Rôle");
 
-            // --- SECTION ADMIN ---
+            // Filtrage dynamique
+            com.vaadin.flow.component.grid.dataview.GridListDataView<Joueur> dataView = grid.setItems(tousLesJoueurs);
+            searchField.addValueChangeListener(e -> {
+                dataView.setFilter(joueur -> {
+                    String recherche = e.getValue().toLowerCase();
+                    String nom = joueur.getSurnom().toLowerCase();
+                    return nom.contains(recherche);
+                });
+            });
+
+            // Clic pour détails
+            grid.addItemClickListener(event -> afficherHistoriqueJoueur(event.getItem()));
+            grid.getStyle().set("cursor", "pointer"); 
+
+            // --- SECTION ADMIN : BOUTONS DE CRÉATION ---
             if ("A".equals(currentUser.getRole())) {
                 
-                // 1. BOUTON MAGIQUE : GÉNÉRATION AUTOMATIQUE
-                Button btnGenAuto = new Button("🎲 Générer 5 Joueurs Aléatoires", e -> {
+                // A. BOUTON MAGIQUE (Génération auto)
+                Button btnGenAuto = new Button("🎲 Générer 5 Joueurs", e -> {
                     try {
                         for (int i = 0; i < 5; i++) {
-                            // Génération de données bidons
                             int randId = (int)(Math.random() * 10000);
                             String nom = "Joueur " + randId;
-                            String cat = Math.random() > 0.5 ? "S" : "J";
-                            int taille = 160 + (int)(Math.random() * 40); // Entre 160 et 200cm
-                            
-                            // Création et sauvegarde
+                            String cat = Math.random() > 0.5 ? "S" : "J"; // S ou J uniquement
+                            int taille = 160 + (int)(Math.random() * 40);
                             new Joueur(nom, cat, taille).saveInDB(con);
                         }
-                        Notification.show("5 joueurs ont été créés !");
-                        showJoueursView(); // Rafraichir la grille
+                        Notification.show("5 joueurs créés !");
+                        showJoueursView(); // Rafraichir
                     } catch (Exception ex) {
                         Notification.show("Erreur: " + ex.getMessage());
                     }
                 });
-                // Style un peu différent pour le distinguer
                 btnGenAuto.addThemeVariants(ButtonVariant.LUMO_SUCCESS);
-                btnGenAuto.getStyle().set("margin-bottom", "20px");
-                
-                
-                // 2. FORMULAIRE CLASSIQUE (MANUEL)
+                btnGenAuto.getStyle().set("margin-bottom", "10px");
+
+                // B. FORMULAIRE MANUEL
                 HorizontalLayout addLayout = new HorizontalLayout();
                 addLayout.setAlignItems(Alignment.BASELINE);
                 
                 TextField tfNom = new TextField("Surnom");
-                TextField tfCat = new TextField("Catégorie");
+                TextField tfCat = new TextField("Cat (S/J)");
                 IntegerField tfTaille = new IntegerField("Taille");
                 
                 Checkbox cbIsAdmin = new Checkbox("Admin ?");
                 PasswordField tfPass = new PasswordField("Mot de passe");
-                tfPass.setPlaceholder("Requis pour Admin");
+                tfPass.setPlaceholder("Requis");
                 tfPass.setVisible(false);
                 
                 cbIsAdmin.addValueChangeListener(e -> {
@@ -319,18 +336,18 @@ public class VuePrincipale extends VerticalLayout {
                 
                 Button btnAdd = new Button("Créer Manuellement", e -> {
                     try {
-                        Joueur nouveauJoueur = new Joueur(tfNom.getValue(), tfCat.getValue(), tfTaille.getValue());
+                        Joueur nouveau = new Joueur(tfNom.getValue(), tfCat.getValue(), tfTaille.getValue());
                         if (cbIsAdmin.getValue()) {
-                            nouveauJoueur.setRole("A");
+                            nouveau.setRole("A");
                             if (tfPass.isEmpty()) {
-                                Notification.show("Erreur : Mot de passe requis pour Admin !").addThemeVariants(NotificationVariant.LUMO_ERROR);
+                                Notification.show("Mot de passe requis pour Admin !").addThemeVariants(NotificationVariant.LUMO_ERROR);
                                 return;
                             }
-                            nouveauJoueur.setMotDePasse(tfPass.getValue());
+                            nouveau.setMotDePasse(tfPass.getValue());
                         } else {
-                            nouveauJoueur.setRole("U");
+                            nouveau.setRole("U");
                         }
-                        nouveauJoueur.saveInDB(con); 
+                        nouveau.saveInDB(con); 
                         Notification.show("Joueur ajouté !");
                         showJoueursView();
                     } catch (Exception ex) {
@@ -341,15 +358,84 @@ public class VuePrincipale extends VerticalLayout {
                 
                 addLayout.add(tfNom, tfCat, tfTaille, cbIsAdmin, tfPass, btnAdd);
                 
-                // On ajoute les deux blocs (Auto + Manuel)
+                // On ajoute les outils Admin AVANT la grille
                 contentArea.add(btnGenAuto, addLayout);
             }
-
-            grid.setItems(liste);
-            contentArea.add(grid);
+            
+            // On ajoute enfin la recherche et la grille pour tout le monde
+            contentArea.add(searchField, grid);
+            
         } catch (SQLException e) {
             Notification.show("Erreur: " + e.getMessage());
         }
+    }
+    
+    private void afficherHistoriqueJoueur(Joueur j) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Historique : " + j.getSurnom());
+        dialog.setWidth("600px");
+        
+        VerticalLayout layout = new VerticalLayout();
+        
+        // Résumé stats
+        layout.add(new H4("Score cumulé : " + j.getTotalScore() + " points"));
+        
+        // Liste des matchs
+        Grid<Matchs> gridMatchs = new Grid<>(Matchs.class, false);
+        gridMatchs.addColumn(m -> "Match #" + m.getId()).setHeader("Match");
+        gridMatchs.addColumn(Matchs::getStatut).setHeader("Statut");
+        
+        // Colonne calculée compliquée : "Combien j'ai marqué dans ce match ?"
+        gridMatchs.addColumn(m -> {
+             try {
+                 // On cherche l'équipe du joueur dans ce match
+                 String sql = "SELECT e.SCORE FROM equipe e " +
+                              "JOIN composition c ON c.IDEQUIPE = e.ID " +
+                              "WHERE e.IDMATCH = ? AND c.IDJOUEUR = ?";
+                 try (java.sql.PreparedStatement pst = con.prepareStatement(sql)) {
+                     pst.setInt(1, m.getId());
+                     pst.setInt(2, j.getId());
+                     java.sql.ResultSet rs = pst.executeQuery();
+                     if (rs.next()) return rs.getInt(1) + " pts";
+                 }
+             } catch (Exception ex) {}
+             return "-";
+        }).setHeader("Mon Score");
+
+        try {
+            // Requête pour trouver tous les matchs du joueur
+            String sqlIds = "SELECT m.ID, m.ID_RONDE, m.ID_TERRAIN, m.STATUT " +
+                            "FROM matchs m " +
+                            "JOIN equipe e ON e.IDMATCH = m.ID " +
+                            "JOIN composition c ON c.IDEQUIPE = e.ID " +
+                            "WHERE c.IDJOUEUR = ? ORDER BY m.ID DESC";
+            
+            List<Matchs> matchsJoues = new ArrayList<>();
+            try (java.sql.PreparedStatement pst = con.prepareStatement(sqlIds)) {
+                pst.setInt(1, j.getId());
+                java.sql.ResultSet rs = pst.executeQuery();
+                while(rs.next()) {
+                    matchsJoues.add(new Matchs(rs.getInt("ID"), rs.getInt("ID_RONDE"), 
+                                               rs.getInt("ID_TERRAIN"), rs.getString("STATUT")));
+                }
+            }
+            
+            if (matchsJoues.isEmpty()) layout.add(new Span("Aucun match joué pour le moment."));
+            else {
+                gridMatchs.setItems(matchsJoues);
+                layout.add(gridMatchs);
+            }
+            
+        } catch (SQLException e) {
+            layout.add(new Span("Erreur chargement historique."));
+        }
+
+        Button closeBtn = new Button("Fermer", e -> dialog.close());
+        layout.add(closeBtn);
+        layout.setAlignItems(Alignment.END);
+        
+        dialog.add(layout);
+        dialog.open();
     }
 
     // --- VUE MATCHS (Saisie scores) ---
