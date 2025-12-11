@@ -52,6 +52,7 @@ import org.apache.commons.io.IOUtils; // Utile si dispo, sinon on fera en Java p
 import com.vaadin.flow.component.textfield.PasswordField;
 import com.vaadin.flow.component.checkbox.Checkbox;
 import com.vaadin.flow.component.details.Details;
+import com.vaadin.flow.component.html.H4;
 
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -255,90 +256,101 @@ public class VuePrincipale extends VerticalLayout {
 
     // --- VUE LISTE DES JOUEURS ---
     // --- VUE LISTE DES JOUEURS ---
-private void showJoueursView() {
-    contentArea.removeAll();
-    contentArea.add(new H2("Liste des Joueurs"));
+// --- VUE LISTE DES JOUEURS ---
+    private void showJoueursView() {
+        contentArea.removeAll();
+        contentArea.add(new H2("Liste des Joueurs"));
 
-    try {
-        List<Joueur> liste = Joueur.tousLesJoueurs(con);
-        Grid<Joueur> grid = new Grid<>(Joueur.class, false);
-        grid.addColumn(Joueur::getId).setHeader("ID").setWidth("50px").setFlexGrow(0);
-        grid.addColumn(Joueur::getSurnom).setHeader("Surnom");
-        grid.addColumn(Joueur::getTailleCm).setHeader("Taille (cm)");
-        grid.addColumn(Joueur::getCategorie).setHeader("Catégorie");
-        
-        // On affiche le rôle pour vérifier qui est Admin
-        grid.addColumn(j -> "A".equals(j.getRole()) ? "Administrateur" : "Joueur")
-            .setHeader("Rôle");
+        try {
+            List<Joueur> liste = Joueur.tousLesJoueurs(con);
+            Grid<Joueur> grid = new Grid<>(Joueur.class, false);
+            grid.addColumn(Joueur::getId).setHeader("ID").setWidth("50px").setFlexGrow(0);
+            grid.addColumn(Joueur::getSurnom).setHeader("Surnom");
+            grid.addColumn(Joueur::getTailleCm).setHeader("Taille (cm)");
+            grid.addColumn(Joueur::getCategorie).setHeader("Catégorie");
+            
+            grid.addColumn(j -> "A".equals(j.getRole()) ? "Administrateur" : "Joueur")
+                .setHeader("Rôle");
 
-        // Ajout (Admin seulement)
-        if ("A".equals(currentUser.getRole())) {
-            // Conteneur pour le formulaire d'ajout
-            HorizontalLayout addLayout = new HorizontalLayout();
-            addLayout.setAlignItems(Alignment.BASELINE); // Aligner les champs proprement
-            
-            TextField tfNom = new TextField("Surnom");
-            TextField tfCat = new TextField("Catégorie");
-            IntegerField tfTaille = new IntegerField("Taille");
-            
-            // --- NOUVEAUTÉS ---
-            Checkbox cbIsAdmin = new Checkbox("Admin ?");
-            PasswordField tfPass = new PasswordField("Mot de passe");
-            tfPass.setPlaceholder("Requis pour Admin");
-            tfPass.setVisible(false); // Caché par défaut
-            
-            // Logique d'affichage dynamique : Si on coche Admin, on montre le mot de passe
-            cbIsAdmin.addValueChangeListener(e -> {
-                tfPass.setVisible(e.getValue());
-                if (!e.getValue()) {
-                    tfPass.clear(); // On vide si on décoche
-                }
-            });
-            
-            Button btnAdd = new Button("Créer", e -> {
-                try {
-                    // 1. Création de l'objet de base
-                    Joueur nouveauJoueur = new Joueur(tfNom.getValue(), tfCat.getValue(), tfTaille.getValue());
-                    
-                    // 2. Gestion du rôle et mot de passe
-                    if (cbIsAdmin.getValue()) {
-                        nouveauJoueur.setRole("A");
-                        
-                        // Validation : Un admin doit avoir un mot de passe
-                        if (tfPass.isEmpty()) {
-                            Notification.show("Erreur : Un administrateur doit avoir un mot de passe !")
-                                    .addThemeVariants(NotificationVariant.LUMO_ERROR);
-                            return; // On arrête tout
+            // --- SECTION ADMIN ---
+            if ("A".equals(currentUser.getRole())) {
+                
+                // 1. BOUTON MAGIQUE : GÉNÉRATION AUTOMATIQUE
+                Button btnGenAuto = new Button("🎲 Générer 5 Joueurs Aléatoires", e -> {
+                    try {
+                        for (int i = 0; i < 5; i++) {
+                            // Génération de données bidons
+                            int randId = (int)(Math.random() * 10000);
+                            String nom = "Joueur " + randId;
+                            String cat = Math.random() > 0.5 ? "S" : "J";
+                            int taille = 160 + (int)(Math.random() * 40); // Entre 160 et 200cm
+                            
+                            // Création et sauvegarde
+                            new Joueur(nom, cat, taille).saveInDB(con);
                         }
-                        nouveauJoueur.setMotDePasse(tfPass.getValue());
-                    } else {
-                        nouveauJoueur.setRole("U"); // U pour User (Standard)
-                        // Pas de mot de passe pour les joueurs normaux
+                        Notification.show("5 joueurs ont été créés !");
+                        showJoueursView(); // Rafraichir la grille
+                    } catch (Exception ex) {
+                        Notification.show("Erreur: " + ex.getMessage());
                     }
-                    
-                    // 3. Sauvegarde en BDD
-                    nouveauJoueur.saveInDB(con); 
-                    
-                    Notification.show("Joueur " + nouveauJoueur.getSurnom() + " ajouté avec succès !");
-                    showJoueursView(); // Rafraichir la liste
-                    
-                } catch (Exception ex) {
-                    Notification.show("Erreur ajout: " + ex.getMessage())
-                            .addThemeVariants(NotificationVariant.LUMO_ERROR);
-                }
-            });
-            btnAdd.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
-            
-            addLayout.add(tfNom, tfCat, tfTaille, cbIsAdmin, tfPass, btnAdd);
-            contentArea.add(addLayout);
-        }
+                });
+                // Style un peu différent pour le distinguer
+                btnGenAuto.addThemeVariants(ButtonVariant.LUMO_SUCCESS);
+                btnGenAuto.getStyle().set("margin-bottom", "20px");
+                
+                
+                // 2. FORMULAIRE CLASSIQUE (MANUEL)
+                HorizontalLayout addLayout = new HorizontalLayout();
+                addLayout.setAlignItems(Alignment.BASELINE);
+                
+                TextField tfNom = new TextField("Surnom");
+                TextField tfCat = new TextField("Catégorie");
+                IntegerField tfTaille = new IntegerField("Taille");
+                
+                Checkbox cbIsAdmin = new Checkbox("Admin ?");
+                PasswordField tfPass = new PasswordField("Mot de passe");
+                tfPass.setPlaceholder("Requis pour Admin");
+                tfPass.setVisible(false);
+                
+                cbIsAdmin.addValueChangeListener(e -> {
+                    tfPass.setVisible(e.getValue());
+                    if (!e.getValue()) tfPass.clear();
+                });
+                
+                Button btnAdd = new Button("Créer Manuellement", e -> {
+                    try {
+                        Joueur nouveauJoueur = new Joueur(tfNom.getValue(), tfCat.getValue(), tfTaille.getValue());
+                        if (cbIsAdmin.getValue()) {
+                            nouveauJoueur.setRole("A");
+                            if (tfPass.isEmpty()) {
+                                Notification.show("Erreur : Mot de passe requis pour Admin !").addThemeVariants(NotificationVariant.LUMO_ERROR);
+                                return;
+                            }
+                            nouveauJoueur.setMotDePasse(tfPass.getValue());
+                        } else {
+                            nouveauJoueur.setRole("U");
+                        }
+                        nouveauJoueur.saveInDB(con); 
+                        Notification.show("Joueur ajouté !");
+                        showJoueursView();
+                    } catch (Exception ex) {
+                        Notification.show("Erreur: " + ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
+                    }
+                });
+                btnAdd.addThemeVariants(ButtonVariant.LUMO_PRIMARY);
+                
+                addLayout.add(tfNom, tfCat, tfTaille, cbIsAdmin, tfPass, btnAdd);
+                
+                // On ajoute les deux blocs (Auto + Manuel)
+                contentArea.add(btnGenAuto, addLayout);
+            }
 
-        grid.setItems(liste);
-        contentArea.add(grid);
-    } catch (SQLException e) {
-        Notification.show("Erreur: " + e.getMessage());
+            grid.setItems(liste);
+            contentArea.add(grid);
+        } catch (SQLException e) {
+            Notification.show("Erreur: " + e.getMessage());
+        }
     }
-}
 
     // --- VUE MATCHS (Saisie scores) ---
     private void showMatchsView() {
@@ -378,6 +390,7 @@ private void showJoueursView() {
     
     // --- VUE ADMIN : CRÉATION TOURNOI/RONDE ---
     // --- VUE ADMIN : GESTION TOURNOIS ---
+    // --- VUE ADMIN : GESTION TOURNOIS ---
     private void showAdminTournoisView() {
         contentArea.removeAll();
         contentArea.add(new H2("Gestion Tournois & Matchs"));
@@ -388,12 +401,11 @@ private void showJoueursView() {
         VerticalLayout autoLayout = new VerticalLayout();
         autoLayout.getStyle().set("border", "1px solid #2ecc71").set("padding", "20px").set("border-radius", "8px").set("background-color", "#f0fff4");
         
-        H3 titleAuto = new H3("🚀 Création Automatique de Tournoi");
+        H3 titleAuto = new H3("🚀 Création Automatique (Recommandé)");
         
         TextField tfNomAuto = new TextField("Nom du Tournoi");
         tfNomAuto.setPlaceholder("Ex: Tournoi d'Été");
         
-        // Sélecteur de sport (Copie de la logique Paramètres)
         java.util.Map<String, Integer> sports = new java.util.LinkedHashMap<>();
         sports.put("Tennis Simple", 1); sports.put("Tennis Double", 2); sports.put("Padel", 2);
         sports.put("Badminton Simple", 1); sports.put("Badminton Double", 2);
@@ -401,7 +413,7 @@ private void showJoueursView() {
         
         ComboBox<String> cbSport = new ComboBox<>("Sport (Définit la taille des équipes)");
         cbSport.setItems(sports.keySet());
-        cbSport.setValue("Tennis Simple"); // Valeur par défaut
+        cbSport.setValue("Tennis Simple");
         
         Button btnAuto = new Button("Générer Tournoi + Ronde 1 + Matchs", e -> {
             if (tfNomAuto.isEmpty() || cbSport.getValue() == null) {
@@ -409,24 +421,22 @@ private void showJoueursView() {
                 return;
             }
             try {
-                // 1. Mise à jour des Paramètres globaux selon le sport choisi
+                // 1. Params
                 Parametres p = Parametres.load(con);
                 p.setNbJoueursParEquipe(sports.get(cbSport.getValue()));
                 p.save(con);
-                
-                // 2. Création du Tournoi
+                // 2. Tournoi
                 Tournoi t = new Tournoi(tfNomAuto.getValue(), null, null);
                 t.saveInDB(con);
-                
-                // 3. Création de la Ronde 1
+                // 3. Ronde 1
                 Ronde r1 = new Ronde(1, t.getId());
                 r1.saveInDB(con);
-                
-                // 4. Génération Aléatoire des Matchs (utilise ServiceTournoi)
+                // 4. Matchs
                 ServiceTournoi.creerRondeAleatoire(con, r1.getId());
                 
                 Notification.show("✅ Tournoi '" + t.getNom() + "' généré avec succès !");
                 tfNomAuto.clear();
+                showAdminTournoisView(); // Rafraichir pour voir le nouveau tournoi dans la liste en bas
                 
             } catch (Exception ex) {
                 Notification.show("Erreur génération: " + ex.getMessage()).addThemeVariants(NotificationVariant.LUMO_ERROR);
@@ -438,29 +448,53 @@ private void showJoueursView() {
 
 
         // =========================================================
-        // BLOC 2 : GESTION MANUELLE (Ton ancien code, simplifié)
+        // BLOC 2 : GESTION MANUELLE COMPLETE
         // =========================================================
         VerticalLayout manualLayout = new VerticalLayout();
         manualLayout.getStyle().set("border", "1px solid #ddd").set("padding", "20px").set("margin-top", "20px");
-        H3 titleManual = new H3("🛠️ Gestion Manuelle des Rondes");
+        H3 titleManual = new H3("🛠️ Gestion Manuelle (Avancé)");
+        
+        // --- SOUS-PARTIE A : CRÉER LE CONTENANT (TOURNOI VIDE) ---
+        H4 titleCreateT = new H4("1. Créer un Tournoi vide");
+        HorizontalLayout layoutCreateT = new HorizontalLayout();
+        layoutCreateT.setAlignItems(Alignment.BASELINE);
+        
+        TextField tfNomManuel = new TextField("Nom");
+        Button btnCreateManuel = new Button("Créer", e -> {
+            if (tfNomManuel.isEmpty()) { Notification.show("Nom requis"); return; }
+            try {
+                new Tournoi(tfNomManuel.getValue(), null, null).saveInDB(con);
+                Notification.show("Tournoi créé (vide). Vous pouvez maintenant lui ajouter des rondes.");
+                tfNomManuel.clear();
+                showAdminTournoisView(); // Rafraichir la liste déroulante ci-dessous
+            } catch (Exception ex) { Notification.show("Erreur: " + ex.getMessage()); }
+        });
+        layoutCreateT.add(tfNomManuel, btnCreateManuel);
+
+        // --- SOUS-PARTIE B : CRÉER LE CONTENU (RONDES & MATCHS) ---
+        H4 titleAddRonde = new H4("2. Ajouter une Ronde & ses Matchs");
+        HorizontalLayout layoutAddRonde = new HorizontalLayout();
+        layoutAddRonde.setAlignItems(Alignment.BASELINE);
         
         ComboBox<Tournoi> cbTournoi = new ComboBox<>("Choisir Tournoi");
         try { cbTournoi.setItems(Tournoi.tousLesTournois(con)); } catch(Exception ex){}
         cbTournoi.setItemLabelGenerator(Tournoi::getNom);
         
-        IntegerField numRonde = new IntegerField("Numéro Ronde");
+        IntegerField numRonde = new IntegerField("N° Ronde");
         
-        Button btnCreerRonde = new Button("Créer Ronde Vide (puis ajouter matchs)", e -> {
+        Button btnCreerRonde = new Button("Créer Ronde & Ouvrir Éditeur", e -> {
             if(cbTournoi.getValue() == null || numRonde.getValue() == null) return;
             try {
                 Ronde r = new Ronde(numRonde.getValue(), cbTournoi.getValue().getId());
                 r.saveInDB(con);
-                Notification.show("Ronde créée. Ouverture de l'éditeur...");
+                Notification.show("Ronde créée.");
                 openManualMatchCreationDialog(r.getId());
             } catch (Exception ex) { Notification.show("Erreur: " + ex.getMessage()); }
         });
         
-        manualLayout.add(titleManual, cbTournoi, numRonde, btnCreerRonde);
+        layoutAddRonde.add(cbTournoi, numRonde, btnCreerRonde);
+        
+        manualLayout.add(titleManual, titleCreateT, layoutCreateT, titleAddRonde, layoutAddRonde);
         
         contentArea.add(autoLayout, manualLayout);
     }
