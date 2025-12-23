@@ -59,6 +59,12 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Optional;
+import com.vaadin.flow.data.renderer.LitRenderer; // Important pour le classement 1, 2, 3...
+import com.vaadin.flow.component.grid.Grid;
+import com.vaadin.flow.component.orderedlayout.HorizontalLayout;
+import com.vaadin.flow.component.combobox.ComboBox;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Point d'entrée de l'application Web (Vaadin).
@@ -592,6 +598,105 @@ public class VuePrincipale extends VerticalLayout {
     // =========================================================================
     // VUE ADMIN : PARAMETRES GLOBAUX + CRÉATION RAPIDE TERRAINS
     // =========================================================================
+    // Génère une représentation visuelle des terrains (Plan Dynamique)
+    // Génère une représentation visuelle des terrains (AVEC STYLE BOÎTE + ACTUALISER)
+    private Component createDynamicTerrainMap() {
+        // 1. Le conteneur principal (La "Boîte")
+        VerticalLayout mainLayout = new VerticalLayout();
+        mainLayout.getStyle()
+            .set("border", "1px solid #ddd")
+            .set("padding", "20px")
+            .set("border-radius", "10px")
+            .set("margin-top", "20px") // Espace par rapport au bloc du dessus
+            .set("background-color", "white");
+
+        // 2. L'en-tête avec Titre + Bouton Actualiser
+        HorizontalLayout header = new HorizontalLayout();
+        header.setWidthFull();
+        header.setAlignItems(Alignment.CENTER);
+        header.setJustifyContentMode(JustifyContentMode.BETWEEN);
+
+        H3 titre = new H3("3. 🏟️ Plan des Terrains (Temps Réel)");
+        titre.getStyle().set("margin", "0");
+
+        Button btnRefresh = new Button("Actualiser le plan");
+        btnRefresh.addThemeVariants(ButtonVariant.LUMO_SMALL);
+        // On ajoute une icône si on veut, ou juste du texte
+        
+        header.add(titre, btnRefresh);
+        mainLayout.add(header);
+
+        // 3. Le conteneur des "Cartes" de terrains
+        com.vaadin.flow.component.orderedlayout.FlexLayout mapContainer = new com.vaadin.flow.component.orderedlayout.FlexLayout();
+        mapContainer.setFlexWrap(com.vaadin.flow.component.orderedlayout.FlexLayout.FlexWrap.WRAP);
+        mapContainer.getStyle().set("gap", "20px").set("margin-top", "10px");
+
+        // 4. La logique de chargement (mise dans une fonction pour être rappelée)
+        Runnable chargerPlan = () -> {
+            mapContainer.removeAll();
+            try {
+                // Récupérer tous les terrains
+                List<Terrain> terrains = Terrain.tousLesTerrains(con);
+                
+                // Récupérer les terrains occupés
+                List<Integer> terrainsOccupes = new ArrayList<>();
+                String sql = "SELECT ID_TERRAIN FROM matchs WHERE STATUT = 'en_cours'";
+                try (java.sql.PreparedStatement pst = con.prepareStatement(sql)) {
+                    java.sql.ResultSet rs = pst.executeQuery();
+                    while(rs.next()) terrainsOccupes.add(rs.getInt(1));
+                }
+
+                if (terrains.isEmpty()) {
+                    mapContainer.add(new Span("Aucun terrain n'a été créé."));
+                } else {
+                    for (Terrain t : terrains) {
+                        boolean isBusy = terrainsOccupes.contains(t.getId());
+                        
+                        // La petite carte visuelle
+                        VerticalLayout card = new VerticalLayout();
+                        card.setWidth("140px");
+                        card.setHeight("100px");
+                        card.setAlignItems(Alignment.CENTER);
+                        card.setJustifyContentMode(JustifyContentMode.CENTER);
+                        
+                        String color = isBusy ? "#e74c3c" : "#2ecc71"; // Rouge ou Vert
+                        card.getStyle()
+                            .set("background-color", color)
+                            .set("border-radius", "8px")
+                            .set("box-shadow", "0 2px 4px rgba(0,0,0,0.1)")
+                            .set("color", "white");
+
+                        Span nom = new Span(t.getNom());
+                        nom.getStyle().set("font-weight", "bold").set("font-size", "1.0em");
+                        
+                        Span type = new Span("Type: " + ("C".equals(t.getType()) ? "Couvert" : "Ouvert"));
+                        type.getStyle().set("font-size", "0.8em");
+                        
+                        Span status = new Span(isBusy ? "OCCUPÉ" : "LIBRE");
+                        status.getStyle().set("font-weight", "bold").set("font-size", "0.8em");
+
+                        card.add(nom, type, status);
+                        mapContainer.add(card);
+                    }
+                }
+            } catch (SQLException e) {
+                mapContainer.add(new Span("Erreur chargement: " + e.getMessage()));
+            }
+        };
+
+        // 5. Action du bouton Actualiser
+        btnRefresh.addClickListener(e -> {
+            chargerPlan.run();
+            Notification.show("Plan mis à jour !");
+        });
+
+        // Chargement initial
+        chargerPlan.run();
+
+        mainLayout.add(mapContainer);
+        return mainLayout;
+    }
+    
     private void showAdminParamsView() {
         contentArea.removeAll();
         contentArea.add(new H2("Configuration du Tournoi"));
@@ -716,6 +821,7 @@ public class VuePrincipale extends VerticalLayout {
         } catch (SQLException e) {
             Notification.show("Erreur chargement params: " + e.getMessage());
         }
+        contentArea.add(createDynamicTerrainMap());
     }
     
     // =========================================================================
@@ -970,6 +1076,7 @@ public class VuePrincipale extends VerticalLayout {
         return "?";
     }
     
+    // --- VUE GLOBALE TOURNOIS (Avec bouton Classement) ---
     private void showVueGlobaleTournoi() {
         contentArea.removeAll();
         contentArea.add(new H2("Tableau de bord des Tournois"));
@@ -982,31 +1089,35 @@ public class VuePrincipale extends VerticalLayout {
                 return;
             }
 
-            // On boucle sur chaque tournoi pour créer une "Carte" visuelle
             for (Tournoi t : tournois) {
-                // 1. Conteneur "Carte" (Style CSS Java)
-                VerticalLayout card = new VerticalLayout();
-                card.setWidthFull();
-                card.getStyle()
-                    .set("border", "1px solid #e0e0e0")
-                    .set("border-radius", "8px")
-                    .set("box-shadow", "0 2px 4px rgba(0,0,0,0.1)") // Ombre légère
-                    .set("padding", "20px")
-                    .set("margin-bottom", "20px")
-                    .set("background-color", "white");
-
-                // En-tête du tournoi
-                H3 titreTournoi = new H3(t.getNom());
-                titreTournoi.getStyle().set("margin-top", "0").set("color", "#2c3e50");
+                // --- EN-TÊTE DU TOURNOI ---
+                HorizontalLayout headerTournoi = new HorizontalLayout();
+                headerTournoi.setAlignItems(Alignment.CENTER);
+                headerTournoi.setWidthFull();
                 
-                Span dates = new Span("Dates : " + (t.getDateDebut() != null ? t.getDateDebut() : "?") + 
+                H3 titre = new H3(t.getNom());
+                titre.getStyle().set("margin", "0");
+                
+                Span dates = new Span("📅 " + (t.getDateDebut() != null ? t.getDateDebut() : "?") + 
                                       " au " + (t.getDateFin() != null ? t.getDateFin() : "?"));
-                dates.getStyle().set("color", "#7f8c8d").set("font-size", "0.9em");
+                dates.getStyle().set("color", "gray").set("font-size", "0.9em").set("margin-left", "15px");
+                
+                // --- NOUVEAU : BOUTON CLASSEMENT ---
+                Button btnClassement = new Button("🏆 Classement", e -> {
+                    // Empêche l'accordéon de s'ouvrir/fermer quand on clique sur le bouton
+                    e.getSource().getElement().executeJs("event.stopPropagation()");
+                    openClassementTournoiDialog(t);
+                });
+                btnClassement.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
+                btnClassement.getStyle().set("margin-left", "auto"); // Pousse le bouton à droite
+                
+                headerTournoi.add(titre, dates, btnClassement);
 
-                card.add(titreTournoi, dates);
+                // --- CONTENU (RONDES) ---
+                VerticalLayout contentTournoi = new VerticalLayout();
+                contentTournoi.setPadding(false);
 
-                // 2. Récupération des Rondes de ce tournoi
-                // (On fait une petite requête SQL directe ici pour filtrer par ID_TOURNOI)
+                // Récupération des Rondes
                 List<Ronde> rondes = new ArrayList<>();
                 try (java.sql.PreparedStatement pst = con.prepareStatement(
                         "SELECT * FROM ronde WHERE ID_TOURNOI = ? ORDER BY NUMERO")) {
@@ -1019,21 +1130,18 @@ public class VuePrincipale extends VerticalLayout {
                 }
 
                 if (rondes.isEmpty()) {
-                    card.add(new Span("Aucune ronde générée."));
+                    contentTournoi.add(new Span("Aucune ronde générée."));
                 } else {
-                    // Pour chaque ronde, on crée un "Accordéon" (Details)
                     for (Ronde r : rondes) {
-                        // Résumé visible (Titre de l'accordéon)
-                        String statutEmoji = "ouverte".equals(r.getEtat()) ? "🟢" : 
-                                             "en_cours".equals(r.getEtat()) ? "🔵" : "🔴";
-                        Span summary = new Span(statutEmoji + " Ronde N°" + r.getNumero() + " (" + r.getEtat() + ")");
-                        summary.getStyle().set("font-weight", "bold");
+                        String emoji = "ouverte".equals(r.getEtat()) ? "🟢" : 
+                                       "en_cours".equals(r.getEtat()) ? "🔵" : "🔴";
+                        Span summaryRonde = new Span(emoji + " Ronde N°" + r.getNumero() + " (" + r.getEtat() + ")");
+                        summaryRonde.getStyle().set("font-weight", "bold");
 
-                        // Contenu caché (La grille des matchs)
                         VerticalLayout contentRonde = new VerticalLayout();
                         contentRonde.setPadding(false);
-                        
-                        // Récupération des matchs de la ronde
+
+                        // Matchs de la ronde
                         List<Matchs> matchsDeLaRonde = new ArrayList<>();
                         try (java.sql.PreparedStatement pstM = con.prepareStatement(
                                 "SELECT * FROM matchs WHERE ID_RONDE = ?")) {
@@ -1045,44 +1153,108 @@ public class VuePrincipale extends VerticalLayout {
                             }
                         }
 
-                        if (matchsDeLaRonde.isEmpty()) {
-                            contentRonde.add(new Span("Pas de matchs planifiés."));
-                        } else {
-                            // Grille des matchs
+                        if (!matchsDeLaRonde.isEmpty()) {
                             Grid<Matchs> gridM = new Grid<>(Matchs.class, false);
                             gridM.addThemeVariants(com.vaadin.flow.component.grid.GridVariant.LUMO_COMPACT);
-                            gridM.setAllRowsVisible(true); // Évite la barre de scroll interne
-
+                            gridM.setAllRowsVisible(true);
                             gridM.addColumn(m -> getTerrainNom(m.getIdTerrain())).setHeader("Terrain").setWidth("150px");
-                            
-                            // Colonne Score (Format : "Eq 1 (12) - (10) Eq 2")
                             gridM.addColumn(m -> getScoreText(m)).setHeader("Affiche & Score").setAutoWidth(true);
-                            
                             gridM.addColumn(Matchs::getStatut).setHeader("Statut").setWidth("100px");
-
                             gridM.setItems(matchsDeLaRonde);
                             contentRonde.add(gridM);
+                        } else {
+                            contentRonde.add(new Span("Pas de matchs."));
                         }
 
-                        // Création du composant Details (Accordéon)
-                        Details detailsRonde = new Details(summary, contentRonde);
-                        detailsRonde.setOpened("en_cours".equals(r.getEtat())); // Ouvre auto si en cours
+                        Details detailsRonde = new Details(summaryRonde, contentRonde);
+                        detailsRonde.setOpened("en_cours".equals(r.getEtat()));
                         detailsRonde.setWidthFull();
-                        detailsRonde.getStyle()
-                            .set("border", "1px solid #eee")
-                            .set("margin-top", "5px")
-                            .set("padding", "5px")
-                            .set("border-radius", "5px");
-
-                        card.add(detailsRonde);
+                        detailsRonde.getStyle().set("background-color", "#f8f9fa").set("border", "1px solid #eee")
+                                               .set("margin-top", "5px").set("padding", "5px");
+                        contentTournoi.add(detailsRonde);
                     }
                 }
-                contentArea.add(card);
+
+                Details tournoiAccordion = new Details(headerTournoi, contentTournoi);
+                tournoiAccordion.setWidthFull();
+                tournoiAccordion.getStyle().set("border", "1px solid #ccc").set("border-radius", "8px")
+                                           .set("margin-bottom", "15px").set("padding", "10px");
+
+                contentArea.add(tournoiAccordion);
             }
 
         } catch (SQLException e) {
-            Notification.show("Erreur chargement tournois: " + e.getMessage());
+            Notification.show("Erreur chargement: " + e.getMessage());
         }
+    }
+    
+    // Ouvre une fenêtre avec le classement spécifique d'un tournoi
+    private void openClassementTournoiDialog(Tournoi t) {
+        Dialog dialog = new Dialog();
+        dialog.setHeaderTitle("Classement : " + t.getNom());
+        dialog.setWidth("600px");
+        
+        VerticalLayout layout = new VerticalLayout();
+        
+        try {
+            // Calcul du classement pour ce tournoi
+            List<Joueur> classement = calculerClassementPourTournoi(t.getId());
+            // Tri décroissant
+            classement.sort((j1, j2) -> Integer.compare(j2.getTotalScore(), j1.getTotalScore()));
+            
+            if (classement.isEmpty()) {
+                layout.add(new Span("Aucun point marqué dans ce tournoi pour l'instant."));
+            } else {
+                Grid<Joueur> grid = new Grid<>(Joueur.class, false);
+                grid.addColumn(Joueur::getSurnom).setHeader("Joueur").setAutoWidth(true);
+                grid.addColumn(Joueur::getCategorie).setHeader("Cat").setWidth("80px");
+                grid.addColumn(Joueur::getTotalScore).setHeader("Points (" + t.getNom() + ")");
+                
+                grid.setItems(classement);
+                layout.add(grid);
+            }
+        } catch (SQLException e) {
+            layout.add(new Span("Erreur calcul : " + e.getMessage()));
+        }
+
+        Button closeBtn = new Button("Fermer", e -> dialog.close());
+        layout.add(closeBtn);
+        layout.setAlignItems(Alignment.END);
+        
+        dialog.add(layout);
+        dialog.open();
+    }
+    
+    // Calcule les points uniquement pour un tournoi donné
+    private List<Joueur> calculerClassementPourTournoi(int idTournoi) throws SQLException {
+        List<Joueur> resultats = new ArrayList<>();
+        String sql = "SELECT j.ID, j.SURNOM, j.CATEGORIE, j.TAILLECM, j.ROLE, " +
+                     "       COALESCE(SUM(e.SCORE), 0) as SCORE_TOURNOI " +
+                     "FROM joueur j " +
+                     "JOIN composition c ON j.ID = c.IDJOUEUR " +
+                     "JOIN equipe e ON c.IDEQUIPE = e.ID " +
+                     "JOIN matchs m ON e.IDMATCH = m.ID " +
+                     "JOIN ronde r ON m.ID_RONDE = r.ID " +
+                     "WHERE r.ID_TOURNOI = ? " +
+                     "GROUP BY j.ID, j.SURNOM, j.CATEGORIE, j.TAILLECM, j.ROLE";
+
+        try (java.sql.PreparedStatement pst = con.prepareStatement(sql)) {
+            pst.setInt(1, idTournoi);
+            try (java.sql.ResultSet rs = pst.executeQuery()) {
+                while (rs.next()) {
+                    Joueur j = new Joueur(
+                        rs.getInt("ID"),
+                        rs.getString("SURNOM"),
+                        rs.getString("CATEGORIE"),
+                        rs.getObject("TAILLECM") != null ? rs.getInt("TAILLECM") : 0,
+                        rs.getString("ROLE"),
+                        rs.getInt("SCORE_TOURNOI") // Le score du tournoi
+                    );
+                    resultats.add(j);
+                }
+            }
+        }
+        return resultats;
     }
 
     // Petit helper pour formater le texte du match "Equipe X (Score) vs Equipe Y (Score)"
