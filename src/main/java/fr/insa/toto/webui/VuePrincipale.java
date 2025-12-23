@@ -493,7 +493,7 @@ public class VuePrincipale extends VerticalLayout {
         VerticalLayout autoLayout = new VerticalLayout();
         autoLayout.getStyle().set("border", "1px solid #2ecc71").set("padding", "20px").set("border-radius", "8px").set("background-color", "#f0fff4");
         
-        H3 titleAuto = new H3("🚀 Création Automatique (Recommandé)");
+        H3 titleAuto = new H3("Création Automatique");
         
         TextField tfNomAuto = new TextField("Nom du Tournoi");
         tfNomAuto.setPlaceholder("Ex: Tournoi d'Été");
@@ -544,7 +544,7 @@ public class VuePrincipale extends VerticalLayout {
         // =========================================================
         VerticalLayout manualLayout = new VerticalLayout();
         manualLayout.getStyle().set("border", "1px solid #ddd").set("padding", "20px").set("margin-top", "20px");
-        H3 titleManual = new H3("🛠️ Gestion Manuelle (Avancé)");
+        H3 titleManual = new H3("Gestion Manuelle");
         
         // --- SOUS-PARTIE A : CRÉER LE CONTENANT (TOURNOI VIDE) ---
         H4 titleCreateT = new H4("1. Créer un Tournoi vide");
@@ -616,7 +616,7 @@ public class VuePrincipale extends VerticalLayout {
         header.setAlignItems(Alignment.CENTER);
         header.setJustifyContentMode(JustifyContentMode.BETWEEN);
 
-        H3 titre = new H3("3. 🏟️ Plan des Terrains (Temps Réel)");
+        H3 titre = new H3("3.️ Plan des Terrains");
         titre.getStyle().set("margin", "0");
 
         Button btnRefresh = new Button("Actualiser le plan");
@@ -781,7 +781,7 @@ public class VuePrincipale extends VerticalLayout {
                 .set("margin-top", "20px")
                 .set("background-color", "white");
             
-            H3 titleTerrain = new H3("2. Ajouter un Terrain Physique");
+            H3 titleTerrain = new H3("2. Ajouter un Terrain");
             
             HorizontalLayout formTerrain = new HorizontalLayout();
             formTerrain.setAlignItems(Alignment.BASELINE); 
@@ -1098,9 +1098,6 @@ public class VuePrincipale extends VerticalLayout {
                 H3 titre = new H3(t.getNom());
                 titre.getStyle().set("margin", "0");
                 
-                Span dates = new Span("📅 " + (t.getDateDebut() != null ? t.getDateDebut() : "?") + 
-                                      " au " + (t.getDateFin() != null ? t.getDateFin() : "?"));
-                dates.getStyle().set("color", "gray").set("font-size", "0.9em").set("margin-left", "15px");
                 
                 // --- NOUVEAU : BOUTON CLASSEMENT ---
                 Button btnClassement = new Button("🏆 Classement", e -> {
@@ -1111,7 +1108,7 @@ public class VuePrincipale extends VerticalLayout {
                 btnClassement.addThemeVariants(ButtonVariant.LUMO_SMALL, ButtonVariant.LUMO_TERTIARY);
                 btnClassement.getStyle().set("margin-left", "auto"); // Pousse le bouton à droite
                 
-                headerTournoi.add(titre, dates, btnClassement);
+                headerTournoi.add(titre, btnClassement);
 
                 // --- CONTENU (RONDES) ---
                 VerticalLayout contentTournoi = new VerticalLayout();
